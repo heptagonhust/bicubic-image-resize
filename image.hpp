@@ -19,13 +19,6 @@ RGBImage LoadImage(const std::string &filename) {
     std::cerr << "only supports rgb image" << std::endl;
     exit(0);
   }
-  // for (int i = 0; i < rows; i++) {
-  //   for (int j = 0; j < cols; j++) {
-  //     printf("%u %u %u\n", data[((i * cols) + j) * channels],
-  //            data[((i * cols) + j) * channels + 1],
-  //            data[((i * cols) + j) * channels + 2]);
-  //   }
-  // }
   printf("image height: %d, width: %d\n", rows, cols);
   return RGBImage{cols, rows, data};
 }
