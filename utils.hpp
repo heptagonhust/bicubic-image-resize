@@ -1,9 +1,10 @@
 #ifndef UTILS_H_
 #define UTILS_H_
 
-#include <string>
 #include <chrono>
 #include <iostream>
+#include <string>
+#include <vector>
 
 class Timer {
 public:
@@ -21,6 +22,12 @@ public:
 private:
   std::string timer_name_{};
   std::chrono::time_point<std::chrono::steady_clock> start_{};
+};
+
+
+struct RGBImage {
+  int cols, rows, channels;
+  unsigned char *data;
 };
 
 #endif
