@@ -1,0 +1,8 @@
+.vscode
+.cache
+a.out
+build/
+resize
+.clangd
+compile_commands.json
+
