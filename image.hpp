@@ -12,15 +12,13 @@
 #include <string>
 
 RGBImage LoadImage(const std::string &filename) {
-  int cols, rows, channels;
-  auto data = stbi_load(filename.c_str(), &cols, &rows, &channels, 3);
-  if (channels != 3) {
-    std::cerr << filename << " has " << channels << " channels " << std::endl;
-    std::cerr << "only supports rgb image" << std::endl;
-    exit(0);
-  }
+  int cols, rows, img_channels;
+  int expected_channels = 3;
+  // expected 3 channels loaded from image
+  auto data = stbi_load(filename.c_str(), &cols, &rows, &img_channels,
+                        expected_channels);
   printf("image height: %d, width: %d\n", rows, cols);
-  return RGBImage{cols, rows, data};
+  return RGBImage{cols, rows, expected_channels, data};
 }
 
 void StoreImage(RGBImage img, const std::string &filename) {

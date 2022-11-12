@@ -26,9 +26,8 @@ private:
 
 
 struct RGBImage {
-  int cols, rows;
+  int cols, rows, channels;
   unsigned char *data;
-  const static int channels = 3;
 };
 
 #endif

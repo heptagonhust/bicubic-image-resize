@@ -41,15 +41,16 @@ unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,
   float sum = .0f;
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
-      sum += coeff[i * 4 + j] * src.data[((x0 + i) * src.cols + y0 + j) * channels + d];
+      sum += coeff[i * 4 + j] *
+             src.data[((x0 + i) * src.cols + y0 + j) * channels + d];
     }
   }
   return static_cast<unsigned char>(sum);
 }
 
 RGBImage ResizeImage(RGBImage src, float ratio) {
-  const int channels = 3;
-  Timer timer("resize image by 2x");
+  const int channels = src.channels;
+  Timer timer("resize image by 5x");
   int resize_rows = src.rows * ratio;
   int resize_cols = src.cols * ratio;
 
@@ -74,7 +75,7 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
       }
     }
   }
-  return RGBImage{resize_cols, resize_rows, res};
+  return RGBImage{resize_cols, resize_rows, channels, res};
 }
 
 #endif
