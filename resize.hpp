@@ -48,9 +48,9 @@ Vec3b BGRAfterBiCubic(Mat src, float x_float, float y_float) {
 
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
-      auto old_rgb = src.ptr<Vec3b>(x0 + i, y0 + j);
+      auto old_bgr = src.ptr<Vec3b>(x0 + i, y0 + j);
       for (int d = 0; d < 3; d++) {
-        sum[d] = coeff[i * 4 + j] * (*old_rgb)[d];
+        sum[d] += coeff[i * 4 + j] * (*old_bgr)[d];
       }
     }
   }
@@ -63,7 +63,7 @@ Mat ResizeImage(Mat src, float ratio) {
   int resize_cols = src.cols * ratio;
 
   auto check_perimeter = [src](float x, float y) -> bool {
-    return x < src.rows - 2 && x > 0 && y < src.cols - 2 && y > 0;
+    return x < src.rows - 2 && x > 1 && y < src.cols - 2 && y > 1;
   };
 
   Mat res(resize_rows, resize_cols, CV_8UC3);
