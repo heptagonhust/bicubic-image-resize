@@ -58,7 +58,7 @@ Vec3b BGRAfterBiCubic(Mat src, float x_float, float y_float) {
 }
 
 Mat ResizeImage(Mat src, float ratio) {
-  Timer timer("resize image by 2x");
+  Timer timer("resize image by 5x");
   int resize_rows = src.rows * ratio;
   int resize_cols = src.cols * ratio;
 
