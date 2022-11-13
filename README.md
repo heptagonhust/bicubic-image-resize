@@ -51,6 +51,10 @@ image.save($RESIZE_IMAGE_PATH)
 使用stb图像库进行处理，可以不关注。
 
 读入图片后，得到3通道像素矩阵，即每个像素点的RGB排列在一起，各占据一个字节。
+
+图像在内存中的排布如图
+![RBGImage](./docs/image.png)
+
 ### 计时
 
 读写不计入程序总时间。计时部分仅有`resize.hpp`中的`ResizeImage`函数，也仅需要优化此部分。
