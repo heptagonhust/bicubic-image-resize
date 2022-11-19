@@ -2,14 +2,29 @@
 
 使用双三次插值法对图像进行缩放。
 
-## 构建与运行
 
-使用cmake进行构建
+## 构建与编译
+
+以ubuntu为例
+
+**依赖安装**
+
+构建依赖
+- build-essential
+- cmake
+
+在ubuntu下可以使用apt包管理器进行安装
 ```shell
-mkdir build
-cd build
-cmake ..
-make
+$ sudo apt-get install build-essential cmake
+```
+
+**使用cmake进行构建**
+在此目录下简历build目录并使用cmake进行构建与编译
+```shell
+$ mkdir build
+$ cd build
+$ cmake ..
+$ make
 ```
 ## 使用与说明
 
@@ -86,3 +101,8 @@ baseline默认编译优化等级为O3，应当在此基础上进行优化。
 
 更多有关高性能计算的学习方向与资料，可翻阅[七边形HPC-roadmap](https://heptagonhust.github.io/HPC-roadmap/)
 
+## 提交方式
+
+你应当fork此代码仓库，并以此为基础进行开发。
+
+你需要在11月30日23:59之前将自己的开发仓库以pull request的方式提交到本仓库下。
