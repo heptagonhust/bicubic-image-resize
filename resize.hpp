@@ -3,12 +3,14 @@
 
 #include "utils.hpp"
 #include <cmath>
+#include <thread>
 
 float WeightCoeff(float x, float a) {
+  float temp=x*x;
   if (x <= 1) {
-    return 1 - (a + 3) * x * x + (a + 2) * x * x * x;
+    return 1 - (a + 3) * temp + (a + 2) * x * temp;
   } else if (x < 2) {
-    return -4 * a + 8 * a * x - 5 * a * x * x + a * x * x * x;
+    return -4 * a + 8 * a * x - 5 * a * temp + a * x * temp;
   }
   return 0.0;
 }
@@ -48,8 +50,25 @@ unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,
   return static_cast<unsigned char>(sum);
 }
 
+void f1(int n)
+{
+    for (int i = 0; i < 5; ++i) {
+        std::cout << "Thread " << n << " executing\n";
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+
 RGBImage ResizeImage(RGBImage src, float ratio) {
   const int channels = src.channels;
+  
+  std::thread t2(f1, 5);
+  t2.join();
+
+  #pragma omp parallel for
+	for (int i = 0; i < 10; ++i)
+	{
+		std::cout << "i = " << i << std::endl;
+	}
   Timer timer("resize image by 5x");
   int resize_rows = src.rows * ratio;
   int resize_cols = src.cols * ratio;
