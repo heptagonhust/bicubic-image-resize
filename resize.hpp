@@ -3,12 +3,18 @@
 
 #include "utils.hpp"
 #include <cmath>
+#include <vector>
+#include <thread>
+#include <mutex>
 
-float WeightCoeff(float x, float a) {
+std::vector<std::thread> pool1;
+
+inline float WeightCoeff(float x, float a) {
+  float temp=x*x;
   if (x <= 1) {
-    return 1 - (a + 3) * x * x + (a + 2) * x * x * x;
+    return 1 - (a + 3) * temp + (a + 2) * x * temp;
   } else if (x < 2) {
-    return -4 * a + 8 * a * x - 5 * a * x * x + a * x * x * x;
+    return -4 * a + 8 * a * x - 5 * a * temp + a * x * temp;
   }
   return 0.0;
 }
@@ -37,14 +43,19 @@ unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,
   int x0 = floor(x_float) - 1;
   int y0 = floor(y_float) - 1;
   CalcCoeff4x4(x_float, y_float, coeff);
-
+  
   float sum = .0f;
+////////////////////////////////
+  
+/////////////////////////////////
+  
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
       sum += coeff[i * 4 + j] *
              src.data[((x0 + i) * src.cols + y0 + j) * channels + d];
     }
   }
+  
   return static_cast<unsigned char>(sum);
 }
 
@@ -63,6 +74,29 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
   auto res = new unsigned char[channels * resize_rows * resize_cols];
   std::fill(res, res + channels * resize_rows * resize_cols, 0);
 
+
+/////////////////////////////////////
+
+  for (int i = 0; i < resize_rows; i++) {
+    std::thread t=std::thread([=]{
+      for (int j = 0; j < resize_cols; j++) {
+        float src_x = i / ratio;
+        float src_y = j / ratio;
+        if (check_perimeter(src_x, src_y)) {
+              for (int d = 0; d < channels; d++) {
+               res[((i * resize_cols) + j) * channels + d] =
+                  BGRAfterBiCubic(src, src_x, src_y, channels, d);
+              } 
+        }
+      }
+  });
+  pool1.push_back(std::move(t));
+  }
+  for(auto &t: pool1) if(t.joinable()) t.join();
+
+
+/////////////////////////////////////
+/*
   for (int i = 0; i < resize_rows; i++) {
     for (int j = 0; j < resize_cols; j++) {
       float src_x = i / ratio;
@@ -75,6 +109,8 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
       }
     }
   }
+  */
+
   return RGBImage{resize_cols, resize_rows, channels, res};
 }
 

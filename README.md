@@ -5,14 +5,15 @@
 ## 构建与运行
 
 使用cmake进行构建
+
 ```shell
 mkdir build
 cd build
 cmake ..
 make
 ```
-## 使用与说明
 
+## 使用与说明
 
 第一个参数传入图像路径，会在图像的同目录下生成一张放大5倍的图像
 
@@ -20,16 +21,14 @@ make
 ./resize $IMAGE_PATH
 ```
 
-
 功能类似于如下python伪代码
+
 ```python
 from PIL import Image
 image = Image.open($IMAGE_PATH)
 resize_image = image.resize(5 * image.width, 5 * image.height)
 image.save($RESIZE_IMAGE_PATH)
-
 ```
-
 
 ## 结构
 
@@ -43,6 +42,7 @@ image.save($RESIZE_IMAGE_PATH)
 你需要使用你所了解的各种方法优化代码，提高其性能，使得图像缩放消耗时间尽可能短。代码已包含计时功能。
 
 更具体地说，在不改变计时区域与整个计算任务的情况下，你应当让计时器打印出的时间尽可能地短。
+
 ### 算法介绍
 
 使用双三次插值法(BiCubic)对图像进行缩放，原理为：对于缩放后图像中的每一个像素点，找到其在原图中对应位置上最近的4x4像素网格，使用此网格进行插值运算得到该像素点的RGB。详见`resize.hpp`
@@ -74,10 +74,10 @@ baseline默认编译优化等级为O3，应当在此基础上进行优化。
 
 注意：要求优化后的程序能够正确缩放图片。虽然不要求用diff test进行评测，但是起码保证图片缩放的效果比较好。建议不要改动总的计算逻辑。
 
-
 ## 参考
 
 如果你不知道如何上手，可以从以下几个方面考虑
+
 - 尝试更优秀的算法
 - 合并计算步骤，消除冗余计算
 - 调整访存结构，增大空间局部性
@@ -85,4 +85,3 @@ baseline默认编译优化等级为O3，应当在此基础上进行优化。
 - 使用向量计算指令
 
 更多有关高性能计算的学习方向与资料，可翻阅[七边形HPC-roadmap](https://heptagonhust.github.io/HPC-roadmap/)
-
