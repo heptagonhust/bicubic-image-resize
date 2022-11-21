@@ -52,24 +52,14 @@ unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,
   }
   return static_cast<unsigned char>(sum);
 }
-
-RGBImage ResizeImage(RGBImage src, float ratio) {
-  const int channels = src.channels;
-  Timer timer("resize image by 5x");
-  int resize_rows = src.rows * ratio;
-  int resize_cols = src.cols * ratio;
-
-  printf("resize to: %d x %d\n", resize_rows, resize_cols);
-
+int SubResize(RGBImage src,unsigned char *res,int channels,int resize_rows,int resize_cols,float ratio,int block_x,int block_y){
   auto check_perimeter = [src](float x, float y) -> bool {
     return x < src.rows - 2 && x > 1 && y < src.cols - 2 && y > 1;
   };
-
-  auto res = new unsigned char[channels * resize_rows * resize_cols];
-  std::fill(res, res + channels * resize_rows * resize_cols, 0);
-
-  for (int i = 0; i < resize_rows; i++) {
-    for (int j = 0; j < resize_cols; j++) {
+  int step_x = ratio * src.cols / N + 1;
+  int step_y = ratio * src.rows / N + 1;
+  for (int i = step_x * block_x; i < resize_rows && i < step_x * (block_x + 1); i++) {
+    for (int j = step_y * block_y; j < resize_cols && j < step_y * (block_y + 1); j++) {
       float src_x = i / ratio;
       float src_y = j / ratio;
       if (check_perimeter(src_x, src_y)) {
@@ -79,6 +69,26 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
         }
       }
     }
+  }
+  return 0;
+}
+RGBImage ResizeImage(RGBImage src, float ratio){
+  const int channels = src.channels;
+  Timer timer("resize image by 5x");
+  int resize_rows = src.rows * ratio;
+  int resize_cols = src.cols * ratio;
+  auto res = new unsigned char[channels * resize_rows * resize_cols];
+  std::fill(res, res + channels * resize_rows * resize_cols, 0);
+  printf("resize to: %d x %d\n", resize_rows, resize_cols);
+  int i = 0;
+  std::thread MyThread[N*N];
+  for(int block_x=0;block_x < N;block_x++){
+    for(int block_y=0;block_y < N;block_y++){
+      MyThread[i++]=std::thread(SubResize,src,res,channels,resize_rows,resize_cols,ratio,block_x,block_y);
+    }
+  }
+  for(int i = 0;i < N * N;i++){
+    MyThread[i].join();
   }
   return RGBImage{resize_cols, resize_rows, channels, res};
 }
