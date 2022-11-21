@@ -5,10 +5,11 @@
 #include <cmath>
 
 float WeightCoeff(float x, float a) {
+  int temp =x*x;
   if (x <= 1) {
-    return 1 - (a + 3) * x * x + (a + 2) * x * x * x;
+    return 1 - (a + 3) * temp + (a + 2) * x * temp;
   } else if (x < 2) {
-    return -4 * a + 8 * a * x - 5 * a * x * x + a * x * x * x;
+    return -4 * a + 8 * a * x - 5 * a *temp + a * x * temp;
   }
   return 0.0;
 }
