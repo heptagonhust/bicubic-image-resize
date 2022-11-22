@@ -8,7 +8,7 @@
 #include <chrono>
 #include "utils.hpp"
 #include <cmath>
-#define N 20
+#define N 4
 float WeightCoeff(float x, float a) {
   if (x <= 1) {
     return 1 - (a + 3) * x * x + (a + 2) * x * x * x;
