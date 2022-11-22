@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 2.8)
 project(resize)
+add_compile_options(-std=c++11)
 add_compile_options(-O3)
 add_executable(resize main.cpp)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
-set(CMAKE_CXX_STANDARD 11)
