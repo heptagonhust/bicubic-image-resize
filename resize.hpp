@@ -70,19 +70,20 @@ void CalcCoeff4x4(float x, float y, float *coeff) {
   //}
 }
 
-unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,int channels, int d) {
-  float coeff[16];
+unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,int channels, int d,float coeff[16]) {
+  
 
   int x0 = floor(x_float) - 1;
   int y0 = floor(y_float) - 1;
-  CalcCoeff4x4(x_float, y_float, coeff);
+  
 
   float sum = .0f;
-//  for (int i = 0; i < 4; i++) {
-//  for (int j = 0; j < 4; j++) {
-//     sum += coeff[i * 4 + j] * src.data[((x0 + i) * src.cols + y0 + j) * channels + d];
-//   }
-// }
+  for (int i = 0; i < 4; i++) {
+  for (int j = 0; j < 4; j++) {
+     sum += coeff[i * 4 + j] * src.data[((x0 + i) * src.cols + y0 + j) * channels + d];
+   }
+ }
+/*
   sum += coeff[0] * src.data[((x0) * src.cols + y0 + 0) * channels + d];
   sum += coeff[1] * src.data[((x0) * src.cols + y0 + 1) * channels + d];
   sum += coeff[2] * src.data[((x0) * src.cols + y0 + 2) * channels + d];
@@ -102,26 +103,39 @@ unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,int cha
   sum += coeff[13] * src.data[((x0+3) * src.cols + y0 + 1) * channels + d];
   sum += coeff[14] * src.data[((x0+3) * src.cols + y0 + 2) * channels + d];
   sum += coeff[15] * src.data[((x0+3) * src.cols + y0 + 3) * channels + d];
-
+*/
 
 
   return static_cast<unsigned char>(sum);
 }
 int SubResize(RGBImage src,unsigned char *res,int channels,int resize_rows,int resize_cols,float ratio,int block_x,int block_y){
+  //Timer part("block:");
   auto check_perimeter = [src](float x, float y) -> bool {
     return x < src.rows - 2 && x > 1 && y < src.cols - 2 && y > 1;
   };
-  int step_x = ratio * src.cols / N + 1;//步长的计算，+1 消去截断误差的影响（最后一个块会小一点）
-  int step_y = ratio * src.rows / N + 1;
-  for (int i = step_x * block_x; i < resize_rows && i < step_x * (block_x + 1); i++) {
-    for (int j = step_y * block_y; j < resize_cols && j < step_y * (block_y + 1); j++) {
+  //int step_x = ratio * src.cols / N + 1;//步长的计算，+1 消去截断误差的影响（最后一个块会小一点）
+  //int step_y = ratio * src.rows / N + 1;
+  int step_x = resize_cols / N + 1;//步长的计算，+1 消去截断误差的影响（最后一个块会小一点）
+  int step_y = resize_rows / N + 1;
+/*
+<---x(i)-->
+*********|
+*********y,j
+*********|
+3 rows,9colunms,
+*/
+
+  float coeff[16];
+  for (int i = step_y * block_y; i < resize_rows && i < step_y * (block_y + 1); i++) {
+    for (int j = step_x * block_x; j < resize_cols +1 && j < step_x * (block_x + 1); j++) {
       float src_x = i / ratio;
       float src_y = j / ratio;
       if (check_perimeter(src_x, src_y)) {
         //for (int d = 0; d < channels; d++) {
-          res[((i * resize_cols) + j) * channels] = BGRAfterBiCubic(src, src_x, src_y, channels, 0);
-          res[((i * resize_cols) + j) * channels+1] = BGRAfterBiCubic(src, src_x, src_y, channels, 1);
-          res[((i * resize_cols) + j) * channels+2] = BGRAfterBiCubic(src, src_x, src_y, channels, 2);
+          CalcCoeff4x4(src_x, src_y, coeff);
+          res[((i * resize_cols) + j) * channels] = BGRAfterBiCubic(src, src_x, src_y, channels, 0,coeff);//(before)>>> resize image by 5x: 67ms save image ../images/CS_5x.jpg(after)
+          res[((i * resize_cols) + j) * channels+1] = BGRAfterBiCubic(src, src_x, src_y, channels, 1,coeff);
+          res[((i * resize_cols) + j) * channels+2] = BGRAfterBiCubic(src, src_x, src_y, channels, 2,coeff);
         //}
       }
     }
