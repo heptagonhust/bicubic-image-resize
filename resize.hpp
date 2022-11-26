@@ -119,15 +119,17 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                     const auto y = float(c * kRatio + ic) / kRatioFloat;
                     CalcCoeff4x4(x - floor(x), y - floor(y), coeffs);
                 #endif
-                    for (int ch = 0; ch < kNChannel; ++ch)
+                    const auto* pInInnerRow = pIn;
+                    float sums[kNChannel]{};
+                    for (auto i = 0; i < 4; ++i, pInInnerRow += nCol * kNChannel)
                     {
-                        auto sum = 0.0f;
-                        const auto* pInner = &pIn[ch];
-                        for (auto i = 0; i < 4; ++i, pInner += nCol * kNChannel)
-                            for (auto j = 0; j < 4; ++j)
-                                sum += coeffs[i][j] * pInner[j * kNChannel];
-                        pOut[ch] = static_cast<unsigned char>(sum);
+                        const auto* pInInner = pInInnerRow;
+                        for (auto j = 0; j < 4; ++j, pInInner += kNChannel)
+                            for (auto ch = 0; ch < kNChannel; ++ch)
+                                sums[ch] += coeffs[i][j] * pInInner[ch];
                     }
+                    for (int ch = 0; ch < kNChannel; ++ch)
+                        pOut[ch] = static_cast<unsigned char>(sums[ch]);
                 }
             }
         }
