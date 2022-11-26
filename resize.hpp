@@ -4,78 +4,165 @@
 #include "utils.hpp"
 #include <cmath>
 
-float WeightCoeff(float x, float a) {
-  if (x <= 1) {
-    return 1 - (a + 3) * x * x + (a + 2) * x * x * x;
-  } else if (x < 2) {
-    return -4 * a + 8 * a * x - 5 * a * x * x + a * x * x * x;
-  }
-  return 0.0;
+constexpr float WeightCoeff(float x, float a)
+{
+    if (x <= 1)
+        return 1 - (a + 3) * x * x + (a + 2) * x * x * x;
+    else if (x < 2)
+        return -4 * a + 8 * a * x - 5 * a * x * x + a * x * x * x;
+    return 0.0;
 }
 
-void CalcCoeff4x4(float x, float y, float *coeff) {
-  const float a = -0.5f;
+constexpr void CalcCoeff4x4(float u, float v, float outCoeff[4][4]) {
+    constexpr float a = -0.5f;
 
-  float u = x - floor(x);
-  float v = y - floor(y);
+    u += 1.0f;
+    v += 1.0f;
 
-  u += 1;
-  v += 1;
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 4; j++)
+            outCoeff[i][j] = WeightCoeff(__builtin_fabs(u - i), a) * WeightCoeff(__builtin_fabs(v - j), a);
+}
 
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 4; j++) {
-      coeff[i * 4 + j] =
-          WeightCoeff(fabs(u - i), a) * WeightCoeff(fabs(v - j), a);
+constexpr auto kNChannel = 3;
+constexpr auto kRatio = 5;
+constexpr auto kRatioFloat = static_cast<float>(kRatio);
+
+struct CoeffTable
+{
+    constexpr CoeffTable()
+    {
+        for (auto ir = 0; ir < kRatio; ++ir)
+        {
+            const auto u = static_cast<float>(ir) / kRatioFloat;
+            for (auto ic = 0; ic < kRatio; ++ic)
+            {
+                const auto v = static_cast<float>(ic) / kRatioFloat;
+                CalcCoeff4x4(u, v, m_Coeffs[ir][ic]);
+            }
+        }
     }
-  }
-}
 
-unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,
-                              int channels, int d) {
-  float coeff[16];
+    alignas(64) float m_Coeffs[kRatio][kRatio][4][4]{};
+};
 
-  int x0 = floor(x_float) - 1;
-  int y0 = floor(y_float) - 1;
-  CalcCoeff4x4(x_float, y_float, coeff);
-
-  float sum = .0f;
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 4; j++) {
-      sum += coeff[i * 4 + j] *
-             src.data[((x0 + i) * src.cols + y0 + j) * channels + d];
-    }
-  }
-  return static_cast<unsigned char>(sum);
-}
+static constexpr CoeffTable kCoeffs;
 
 RGBImage ResizeImage(RGBImage src, float ratio) {
-  const int channels = src.channels;
-  Timer timer("resize image by 5x");
-  int resize_rows = src.rows * ratio;
-  int resize_cols = src.cols * ratio;
+    if (kNChannel != src.channels || kRatio != ratio)
+        return {};
 
-  printf("resize to: %d x %d\n", resize_rows, resize_cols);
+    Timer timer("resize image by 5x");
 
-  auto check_perimeter = [src](float x, float y) -> bool {
-    return x < src.rows - 2 && x > 1 && y < src.cols - 2 && y > 1;
-  };
+    const auto nRow = src.rows;
+    const auto nCol = src.cols;
+    const auto nResRow = nRow * kRatio;
+    const auto nResCol = nCol * kRatio;
 
-  auto res = new unsigned char[channels * resize_rows * resize_cols];
-  std::fill(res, res + channels * resize_rows * resize_cols, 0);
+    printf("resize to: %d x %d\n", nResRow, nResCol);
 
-  for (int i = 0; i < resize_rows; i++) {
-    for (int j = 0; j < resize_cols; j++) {
-      float src_x = i / ratio;
-      float src_y = j / ratio;
-      if (check_perimeter(src_x, src_y)) {
-        for (int d = 0; d < channels; d++) {
-          res[((i * resize_cols) + j) * channels + d] =
-              BGRAfterBiCubic(src, src_x, src_y, channels, d);
+    const auto pRes = new unsigned char[kNChannel * nResRow * nResCol]{};
+
+    // Analysis of check_perimeter() in vanilla code:
+    // srcRow = r + ir / kRatio
+    // resRow = r * kRatio + ir
+    // * srcRow <= 1
+    //   * r + ir / kRatio <= 1
+    //   * (r == 0) || (r == 1 && ir == 0)
+    //   * resRow <= kRatio
+    // * srcRow >= nRow - 2
+    //   * r + ir / kRatio >= nRow - 2
+    //   * (r >= nRow - 2)
+    //   * resRow >= (nRow - 2) * kRatio
+    // * 1 < srcRow < nRow - 2
+    //   * (r == 1 && ir > 0) || (2 <= r < nRow - 2)
+    //   * kRatio < resRow < nResRow - 2 * kRatio
+    // For the sake of simplicity, we change the limit to
+    // * 1 <= srcRow < nRow - 2
+    //  * 1 <= r < nRow - 2
+    //  * kRatio <= resRow < nResRow - 2 * kRatio
+    // The above also holds for columns
+
+#define PRECOMPUTE_COEFFS 0
+#define SIMPLIFY_START 0
+
+#if 0
+    auto SampleBicubic = [&src, nCol](const float coeffs[4][4], int r, int c, int ch) -> unsigned char
+    {
+        auto sum = 0.0f;
+        const auto* in = &src.data[((r - 1) * nCol + c - 1) * kNChannel + ch];
+        for (auto i = 0; i < 4; ++i, in += nCol * kNChannel)
+            for (auto j = 0; j < 4; ++j)
+                sum += coeffs[i][j] * in[j * kNChannel];
+        return static_cast<unsigned char>(sum);
+    };
+
+    auto ProcessCell = [&SampleBicubic, nResCol, pRes](int r, int ir, int c, int ic)
+    {
+        const auto resRow = r * kRatio + ir;
+        const auto resCol = c * kRatio + ic;
+        const auto resIdx = (resRow * nResCol + resCol) * kNChannel;
+    #if PRECOMPUTE_COEFFS
+        const auto& coeffs = kCoeffs.m_Coeffs[ir][ic];
+    #else
+        float coeffs[4][4];
+        const auto x = float(r * kRatio + ir) / kRatioFloat;
+        const auto y = float(c * kRatio + ic) / kRatioFloat;
+        CalcCoeff4x4(x - floor(x), y - floor(y), coeffs);
+    #endif
+
+        for (int ch = 0; ch < kNChannel; ++ch)
+            pRes[resIdx + ch] = SampleBicubic(coeffs, r, c, ch);
+    };
+#endif
+
+    const auto* pInRow = src.data;
+#if SIMPLIFY_START
+    auto* pOutRow = &pRes[(kRatio * nResCol + kRatio) * kNChannel];
+#else
+    auto* pOutRow = &pRes[((kRatio + 1) * nResCol + kRatio + 1) * kNChannel];
+#endif
+    for (auto r = 1; r < nRow - 2; ++r, pInRow += nCol * kNChannel)
+    {
+    #if SIMPLIFY_START
+        for (auto ir = 0; ir < kRatio; ++ir, pOutRow += nResCol * kNChannel)
+    #else
+        for (auto ir = r == 1 ? 1 : 0; ir < kRatio; ++ir, pOutRow += nResCol * kNChannel)
+    #endif
+        {
+            const auto* pIn = pInRow;
+            auto* pOut = pOutRow;
+            for (auto c = 1; c < nCol - 2; ++c, pIn += kNChannel)
+            {
+            #if SIMPLIFY_START
+                for (auto ic = 0; ic < kRatio; ++ic, pOut += kNChannel)
+            #else
+                for (auto ic = c == 1 ? 1 : 0; ic < kRatio; ++ic, pOut += kNChannel)
+            #endif
+                {
+                #if PRECOMPUTE_COEFFS
+                    const auto& coeffs = kCoeffs.m_Coeffs[ir][ic];
+                #else
+                    float coeffs[4][4];
+                    const auto x = float(r * kRatio + ir) / kRatioFloat;
+                    const auto y = float(c * kRatio + ic) / kRatioFloat;
+                    CalcCoeff4x4(x - floor(x), y - floor(y), coeffs);
+                #endif
+                    for (int ch = 0; ch < kNChannel; ++ch)
+                    {
+                        auto sum = 0.0f;
+                        const auto* pInner = &pIn[ch];
+                        for (auto i = 0; i < 4; ++i, pInner += nCol * kNChannel)
+                            for (auto j = 0; j < 4; ++j)
+                                sum += coeffs[i][j] * pInner[j * kNChannel];
+                        pOut[ch] = static_cast<unsigned char>(sum);
+                    }
+                }
+            }
         }
-      }
     }
-  }
-  return RGBImage{resize_cols, resize_rows, channels, res};
+
+    return RGBImage{nResCol, nResRow, kNChannel, pRes};
 }
 
 #endif
