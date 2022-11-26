@@ -8,6 +8,9 @@
 #include <chrono>
 #include "utils.hpp"
 #include <cmath>
+#include <immintrin.h> //AVX(include wmmintrin.h)
+//#include <intrin.h>    //(include immintrin.h)
+
 #define N 4
 float WeightCoeff(float x, float a) {
   float temp = x * x;//not int temp!!
@@ -29,45 +32,31 @@ void CalcCoeff4x4(float x, float y, float *coeff) {
   u += 1;
   v += 1;
 
-  float WeightCoeff_u[4];
-  float WeightCoeff_v[4];
-  //for (int k = 0;;k < 4;k++){
-    WeightCoeff_v[0] = WeightCoeff(fabs(v), a);
-    WeightCoeff_v[1] = WeightCoeff(fabs(v - 1), a);
-    WeightCoeff_v[2] = WeightCoeff(fabs(v - 2), a);
-    WeightCoeff_v[3] = WeightCoeff(fabs(v - 3), a);
+  float WeightCoeff_u[16];
+  float WeightCoeff_v[16];
 
-    WeightCoeff_u[0] = WeightCoeff(fabs(u), a);
-    WeightCoeff_u[1] = WeightCoeff(fabs(u - 1), a);
-    WeightCoeff_u[2] = WeightCoeff(fabs(u - 2), a);
-    WeightCoeff_u[3] = WeightCoeff(fabs(u - 3), a);
+    WeightCoeff_v[0] = WeightCoeff_v[1] = WeightCoeff_v[2] =  WeightCoeff_v[3] = WeightCoeff(fabs(v), a);
+    WeightCoeff_v[4] = WeightCoeff_v[5] = WeightCoeff_v[6] =  WeightCoeff_v[7] = WeightCoeff(fabs(v-1), a);
+    WeightCoeff_v[8] = WeightCoeff_v[9] = WeightCoeff_v[10] = WeightCoeff_v[11] = WeightCoeff(fabs(v-2), a);
+    WeightCoeff_v[12] = WeightCoeff_v[13] = WeightCoeff_v[14] = WeightCoeff_v[15] = WeightCoeff(fabs(v-3), a);
 
-  //}
-  //for (int i = 0; i < 4; i++) {
-    //for (int j = 0; j < 4; j++) {//循环展开
-      coeff[0] = WeightCoeff_u[0] * WeightCoeff_v[0];
-      coeff[1] = WeightCoeff_u[0] * WeightCoeff_v[1];      
-      coeff[2] = WeightCoeff_u[0] * WeightCoeff_v[2];
-      coeff[3] = WeightCoeff_u[0] * WeightCoeff_v[3];// make use of cache
 
-      coeff[4] = WeightCoeff_u[1] * WeightCoeff_v[0];
-      coeff[5] = WeightCoeff_u[1] * WeightCoeff_v[1];      
-      coeff[6] = WeightCoeff_u[1] * WeightCoeff_v[2];
-      coeff[7] = WeightCoeff_u[1] * WeightCoeff_v[3];
+    WeightCoeff_u[0] = WeightCoeff_u[4] = WeightCoeff_u[8] = WeightCoeff_u[12] = WeightCoeff(fabs(u), a);
+    WeightCoeff_u[1] = WeightCoeff_u[5] = WeightCoeff_u[9] = WeightCoeff_u[13] = WeightCoeff(fabs(u - 1), a);
+    WeightCoeff_u[2] = WeightCoeff_u[6] = WeightCoeff_u[10] = WeightCoeff_u[14] = WeightCoeff(fabs(u - 2), a);
+    WeightCoeff_u[3] = WeightCoeff_u[7] = WeightCoeff_u[11] = WeightCoeff_u[15] = WeightCoeff(fabs(u - 3), a);
 
-      coeff[8] = WeightCoeff_u[2] * WeightCoeff_v[0];
-      coeff[9] = WeightCoeff_u[2] * WeightCoeff_v[1];      
-      coeff[10] = WeightCoeff_u[2] * WeightCoeff_v[2];
-      coeff[11] = WeightCoeff_u[2] * WeightCoeff_v[3];
+  __m256 s = _mm256_loadu_ps (WeightCoeff_u);
+  __m256 t = _mm256_loadu_ps (WeightCoeff_v);
+  __m256 rst1 = _mm256_mul_ps (s,t);
+  _mm256_storeu_ps(coeff,rst1);
 
-      coeff[12] = WeightCoeff_u[3] * WeightCoeff_v[0];
-      coeff[13] = WeightCoeff_u[3] * WeightCoeff_v[1];      
-      coeff[14] = WeightCoeff_u[3] * WeightCoeff_v[2];
-      coeff[15] = WeightCoeff_u[3] * WeightCoeff_v[3];
+  __m256 c = _mm256_loadu_ps (WeightCoeff_u+8);
+  __m256 d = _mm256_loadu_ps (WeightCoeff_v+8);
+  __m256 rst2 = _mm256_mul_ps (c,d);
+  _mm256_storeu_ps(coeff+8,rst2);
 
- 
-    //}
-  //}
+
 }
 
 unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,int channels, int d,float coeff[16]) {
@@ -78,6 +67,7 @@ unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,int cha
   
 
   float sum = .0f;
+  //#pragma simd 负优化。
   for (int i = 0; i < 4; i++) {
   for (int j = 0; j < 4; j++) {
      sum += coeff[i * 4 + j] * src.data[((x0 + i) * src.cols + y0 + j) * channels + d];
