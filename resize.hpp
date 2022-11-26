@@ -13,7 +13,8 @@ constexpr float WeightCoeff(float x, float a)
     return 0.0;
 }
 
-constexpr void CalcCoeff4x4(float u, float v, float outCoeff[4][4]) {
+constexpr void CalcCoeff4x4(float u, float v, float outCoeff[4][4])
+{
     constexpr float a = -0.5f;
 
     u += 1.0f;
@@ -83,38 +84,8 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
     //  * kRatio <= resRow < nResRow - 2 * kRatio
     // The above also holds for columns
 
-#define PRECOMPUTE_COEFFS 0
+#define PRECOMPUTE_COEFFS 1
 #define SIMPLIFY_START 0
-
-#if 0
-    auto SampleBicubic = [&src, nCol](const float coeffs[4][4], int r, int c, int ch) -> unsigned char
-    {
-        auto sum = 0.0f;
-        const auto* in = &src.data[((r - 1) * nCol + c - 1) * kNChannel + ch];
-        for (auto i = 0; i < 4; ++i, in += nCol * kNChannel)
-            for (auto j = 0; j < 4; ++j)
-                sum += coeffs[i][j] * in[j * kNChannel];
-        return static_cast<unsigned char>(sum);
-    };
-
-    auto ProcessCell = [&SampleBicubic, nResCol, pRes](int r, int ir, int c, int ic)
-    {
-        const auto resRow = r * kRatio + ir;
-        const auto resCol = c * kRatio + ic;
-        const auto resIdx = (resRow * nResCol + resCol) * kNChannel;
-    #if PRECOMPUTE_COEFFS
-        const auto& coeffs = kCoeffs.m_Coeffs[ir][ic];
-    #else
-        float coeffs[4][4];
-        const auto x = float(r * kRatio + ir) / kRatioFloat;
-        const auto y = float(c * kRatio + ic) / kRatioFloat;
-        CalcCoeff4x4(x - floor(x), y - floor(y), coeffs);
-    #endif
-
-        for (int ch = 0; ch < kNChannel; ++ch)
-            pRes[resIdx + ch] = SampleBicubic(coeffs, r, c, ch);
-    };
-#endif
 
     const auto* pInRow = src.data;
 #if SIMPLIFY_START
