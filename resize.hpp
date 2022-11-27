@@ -92,6 +92,7 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
 #define LOAD_IN_XMM 1
 #define LOAD_IN_INTRIN 1
 
+    #pragma omp parallel for
     for (auto r = 1; r < nRow - 2; ++r)
     {
         for (auto c = 1; c < nCol - 2; ++c)
