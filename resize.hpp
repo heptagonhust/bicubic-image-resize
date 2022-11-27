@@ -1,8 +1,6 @@
 #ifndef RESIZE_H_
 #define RESIZE_H_
 
-#include "utils.hpp"
-#include <cmath>
 #include <utility>
 #include <thread>
 #include <chrono>
@@ -11,7 +9,7 @@
 #include <immintrin.h> //AVX(include wmmintrin.h)
 //#include <intrin.h>    //(include immintrin.h)
 
-#define N 4
+#define N 8
 float WeightCoeff(float x, float a) {
   float temp = x * x;//not int temp!!
   if (x <= 1) {
@@ -99,7 +97,7 @@ unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,int cha
   return static_cast<unsigned char>(sum);
 }
 int SubResize(RGBImage src,unsigned char *res,int channels,int resize_rows,int resize_cols,float ratio,int block_x,int block_y){
-  //Timer part("block:");
+  Timer part("part");
   auto check_perimeter = [src](float x, float y) -> bool {
     return x < src.rows - 2 && x > 1 && y < src.cols - 2 && y > 1;
   };
