@@ -91,6 +91,11 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
     {
         for (auto c = 1; c < nCol - 2; ++c)
         {
+            float in[4][4][3];
+            for (auto i = 0; i < 4; ++i)
+                for (auto j = 0; j < 4; ++j)
+                    for (auto ch = 0; ch < kNChannel; ++ch)
+                        in[i][j][ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
         #if SIMPLIFY_START
             for (auto ir = 0; ir < kRatio; ++ir)
         #else
@@ -115,7 +120,7 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                     for (auto i = 0; i < 4; ++i)
                         for (auto j = 0; j < 4; ++j)
                             for (auto ch = 0; ch < kNChannel; ++ch)
-                                sums[ch] += coeffs[i][j] * src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
+                                sums[ch] += coeffs[i][j] * in[i][j][ch];
                     for (int ch = 0; ch < kNChannel; ++ch)
                         pRes[((r * kRatio + ir) * nResCol + (c * kRatio + ic)) * kNChannel + ch] = static_cast<unsigned char>(sums[ch]);
                 }
