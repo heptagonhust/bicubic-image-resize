@@ -30,6 +30,7 @@ constexpr void CalcCoeff4x4(float u, float v, float outCoeff[4][4])
 constexpr auto kNChannel = 3;
 constexpr auto kRatio = 5;
 constexpr auto kRatioFloat = static_cast<float>(kRatio);
+static_assert(kRatio * kNChannel <= 16, "YMM");
 
 struct CoeffTable
 {
@@ -41,15 +42,36 @@ struct CoeffTable
             for (auto ic = 0; ic < kRatio; ++ic)
             {
                 const auto v = static_cast<float>(ic) / kRatioFloat;
-                CalcCoeff4x4(u, v, m_Coeffs[ir][ic]);
+                CalcCoeff4x4(u, v, m_Data[ir][ic]);
             }
         }
     }
 
-    alignas(64) float m_Coeffs[kRatio][kRatio][4][4]{};
+    constexpr decltype(auto) operator[](int ir) const { return (m_Data[ir]); }
+
+    alignas(32) float m_Data[kRatio][kRatio][4][4]{};
 };
 
 static constexpr CoeffTable kCoeffs;
+
+struct CoeffTableSwizzled
+{
+    constexpr CoeffTableSwizzled()
+    {
+        for (auto ir = 0; ir < kRatio; ++ir)
+            for (auto i = 0; i < 4; ++i)
+                for (auto j = 0; j < 4; ++j)
+                    for (auto ic = 0; ic < kRatio; ++ic)
+                        for (auto ch = 0; ch < kNChannel; ++ch)
+                            m_Data[ir][i][j][ic * kNChannel + ch] = kCoeffs[ir][ic][i][j];
+    }
+
+    constexpr decltype(auto) operator[](int ir) const { return (m_Data[ir]); }
+
+    alignas(32) float m_Data[kRatio][4][4][16]{};
+};
+
+static constexpr CoeffTableSwizzled kCoeffsSwizzled;
 
 RGBImage ResizeImage(RGBImage src, float ratio) {
     if (kNChannel != src.channels || kRatio != ratio)
@@ -92,107 +114,23 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
 #define LOAD_IN_XMM 1
 #define LOAD_IN_INTRIN 1
 
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for (auto r = 1; r < nRow - 2; ++r)
     {
         for (auto c = 1; c < nCol - 2; ++c)
         {
-            alignas(32) float in[4][4][kNChannel];
-        #if LOAD_IN_INTRIN
-            {
-            #if LOAD_IN_YMM
-                const auto in00 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel]);
-                const auto in01 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 8]);
-                const auto in10 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[(r * nCol + (c - 1)) * kNChannel]);
-                const auto in11 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[(r * nCol + (c - 1)) * kNChannel + 4]);
-                const auto in20 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel]);
-                const auto in21 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 8]);
-                const auto in30 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel]);
-                const auto in31 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 4]);
-                const auto in0110 = _mm256_permute2x128_si256(_mm256_castsi128_si256(in01), _mm256_castsi128_si256(in10), 0b0010'0000);
-                const auto in2130 = _mm256_permute2x128_si256(_mm256_castsi128_si256(in21), _mm256_castsi128_si256(in30), 0b0010'0000);
-                const auto fin00 = _mm256_cvtepi32_ps(in00);
-                const auto fin0110 = _mm256_cvtepi32_ps(in0110);
-                const auto fin11 = _mm256_cvtepi32_ps(in11);
-                const auto fin20 = _mm256_cvtepi32_ps(in20);
-                const auto fin2130 = _mm256_cvtepi32_ps(in2130);
-                const auto fin31 = _mm256_cvtepi32_ps(in31);
-                _mm256_store_ps((float*)&in + 0, fin00);
-                _mm256_store_ps((float*)&in + 8, fin0110);
-                _mm256_store_ps((float*)&in + 16, fin11);
-                _mm256_store_ps((float*)&in + 24, fin20);
-                _mm256_store_ps((float*)&in + 32, fin2130);
-                _mm256_store_ps((float*)&in + 40, fin31);
-            #elif LOAD_IN_XMM
-                const auto in00 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 0]);
-                const auto in01 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 4]);
-                const auto in02 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 8]);
-                const auto in10 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c - 1)) * kNChannel + 0]);
-                const auto in11 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c - 1)) * kNChannel + 4]);
-                const auto in12 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c - 1)) * kNChannel + 8]);
-                const auto in20 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 0]);
-                const auto in21 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 4]);
-                const auto in22 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 8]);
-                const auto in30 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 0]);
-                const auto in31 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 4]);
-                const auto in32 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 8]);
-                const auto fin00 = _mm_cvtepi32_ps(in00);
-                const auto fin01 = _mm_cvtepi32_ps(in01);
-                const auto fin02 = _mm_cvtepi32_ps(in02);
-                const auto fin10 = _mm_cvtepi32_ps(in10);
-                const auto fin11 = _mm_cvtepi32_ps(in11);
-                const auto fin12 = _mm_cvtepi32_ps(in12);
-                const auto fin20 = _mm_cvtepi32_ps(in20);
-                const auto fin21 = _mm_cvtepi32_ps(in21);
-                const auto fin22 = _mm_cvtepi32_ps(in22);
-                const auto fin30 = _mm_cvtepi32_ps(in30);
-                const auto fin31 = _mm_cvtepi32_ps(in31);
-                const auto fin32 = _mm_cvtepi32_ps(in32);
-                _mm_store_ps((float*)&in[0] + 0, fin00);
-                _mm_store_ps((float*)&in[0] + 4, fin01);
-                _mm_store_ps((float*)&in[0] + 8, fin02);
-                _mm_store_ps((float*)&in[1] + 0, fin10);
-                _mm_store_ps((float*)&in[1] + 4, fin11);
-                _mm_store_ps((float*)&in[1] + 8, fin12);
-                _mm_store_ps((float*)&in[2] + 0, fin20);
-                _mm_store_ps((float*)&in[2] + 4, fin21);
-                _mm_store_ps((float*)&in[2] + 8, fin22);
-                _mm_store_ps((float*)&in[3] + 0, fin30);
-                _mm_store_ps((float*)&in[3] + 4, fin31);
-                _mm_store_ps((float*)&in[3] + 8, fin32);
-            #else
-                const auto in00 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel]);
-                const auto in01 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 8]);
-                const auto in10 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[(r * nCol + (c - 1)) * kNChannel]);
-                const auto in11 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[(r * nCol + (c - 1)) * kNChannel + 8]);
-                const auto in20 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel]);
-                const auto in21 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 8]);
-                const auto in30 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel]);
-                const auto in31 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 8]);
-                const auto fin00 = _mm256_cvtepi32_ps(in00);
-                const auto fin01 = _mm_cvtepi32_ps(in01);
-                const auto fin10 = _mm256_cvtepi32_ps(in10);
-                const auto fin11 = _mm_cvtepi32_ps(in11);
-                const auto fin20 = _mm256_cvtepi32_ps(in20);
-                const auto fin21 = _mm_cvtepi32_ps(in21);
-                const auto fin30 = _mm256_cvtepi32_ps(in30);
-                const auto fin31 = _mm_cvtepi32_ps(in31);
-                _mm256_store_ps(&in[0][0][0], fin00);
-                _mm_store_ps(&in[0][2][2], fin01);
-                _mm256_store_ps(&in[1][0][0], fin10);
-                _mm_store_ps(&in[1][2][2], fin11);
-                _mm256_store_ps(&in[2][0][0], fin20);
-                _mm_store_ps(&in[2][2][2], fin21);
-                _mm256_store_ps(&in[3][0][0], fin30);
-                _mm_store_ps(&in[3][2][2], fin31);
-            #endif
-            }
-        #else
-            for (auto i = 0; i < 4; ++i)
+            alignas(32) float in012[4][4][16]{};
+            for (int i = 0; i < 4; ++i)
                 for (auto j = 0; j < 4; ++j)
-                    for (auto ch = 0; ch < kNChannel; ++ch)
-                        in[i][j][ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
-        #endif
+                    for (auto ic = 0; ic < kRatio; ++ic)
+                        for (auto ch = 0; ch < kNChannel; ++ch)
+                            in012[i][j][ic * kNChannel + ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
+
+            //alignas(32) float in[4][4][kNChannel];
+            //for (auto i = 0; i < 4; ++i)
+            //    for (auto j = 0; j < 4; ++j)
+            //        for (auto ch = 0; ch < kNChannel; ++ch)
+            //            in[i][j][ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
 
         #if SIMPLIFY_START
             for (auto ir = 0; ir < kRatio; ++ir)
@@ -200,28 +138,99 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
             for (auto ir = r == 1 ? 1 : 0; ir < kRatio; ++ir)
         #endif
             {
-            #if SIMPLIFY_START
-                for (auto ic = 0; ic < kRatio; ++ic)
-            #else
-                for (auto ic = c == 1 ? 1 : 0; ic < kRatio; ++ic)
-            #endif
-                {
-                #if PRECOMPUTE_COEFFS
-                    const auto& coeffs = kCoeffs.m_Coeffs[ir][ic];
-                #else
-                    float coeffs[4][4];
-                    const auto x = float(r * kRatio + ir) / kRatioFloat;
-                    const auto y = float(c * kRatio + ic) / kRatioFloat;
-                    CalcCoeff4x4(x - floor(x), y - floor(y), coeffs);
-                #endif
-                    float sums[kNChannel]{};
-                    for (auto i = 0; i < 4; ++i)
-                        for (auto j = 0; j < 4; ++j)
-                            for (auto ch = 0; ch < kNChannel; ++ch)
-                                sums[ch] += coeffs[i][j] * in[i][j][ch];
-                    for (int ch = 0; ch < kNChannel; ++ch)
-                        pRes[((r * kRatio + ir) * nResCol + (c * kRatio + ic)) * kNChannel + ch] = static_cast<unsigned char>(sums[ch]);
-                }
+                //float sums[16]{};
+                //const auto& coeffs = kCoeffsSwizzled[ir];
+                //for (auto i = 0; i < 4; ++i)
+                //    for (auto j = 0; j < 4; ++j)
+                //        for (auto k = 0; k < 16; ++k)
+                //            sums[k] += coeffs[i][j][k] * in012[i][j][k];
+                //for (auto k = 0; k < 16; ++k)
+                //    sums[k] = __builtin_fmin(__builtin_fmaxf(sums[k], 0.0f), 255.0f);
+                //for (auto i = 0; i < 4; ++i)
+                //    for (auto j = 0; j < 4; ++j)
+                //        for (auto ic = 0; ic < kRatio; ++ic)
+                //            for (auto ch = 0; ch < kNChannel; ++ch)
+                //                sums[ic * kNChannel + ch] += kCoeffs[ir][ic][i][j] * in[i][j][ch];
+                //const auto yf0 = _mm256_load_ps(&sums[0]);
+                //const auto yf1 = _mm256_load_ps(&sums[8]);
+                //for (auto k = 0; k < 16; ++k)
+                //    pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel + k] = sums[k];
+                //for (auto ic = 0; ic < kRatio; ++ic)
+                //{
+                //    for (auto ch = 0; ch < kNChannel; ++ch)
+                //    {
+                //        //pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel + (ic * kNChannel + ch)] = sums[ic * kNChannel + ch];
+                //        pRes[((r * kRatio + ir) * nResCol +  c * kRatio + ic ) * kNChannel + ch] = sums[ic * kNChannel + ch];
+                //        //pRes[((r * kRatio + ir) * nResCol + (c * kRatio + ic)) * kNChannel + ch] = sums[ic * kNChannel + ch];
+                //    }
+                //}
+                const auto& coeffs = kCoeffsSwizzled.m_Data[ir];
+                auto yf0 = _mm256_setzero_ps();
+                auto yf1 = _mm256_setzero_ps();
+
+                for (auto i = 0; i < 4; ++i)
+                    for (auto j = 0; j < 4; ++j)
+                    {
+                        yf0 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][0]), _mm256_load_ps(&in012[i][j][0]), yf0);
+                        yf1 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][8]), _mm256_load_ps(&in012[i][j][8]), yf1);
+                    }
+                //_mm256_store_ps(&sums[0], yf0);
+                //_mm256_store_ps(&sums[8], yf1);
+
+                //for (auto k = 0; k < 16; ++k)
+                //    pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel + k] = sums[k];
+
+                const auto ydw0 = _mm256_cvttps_epi32(yf0);
+                const auto ydw1 = _mm256_cvttps_epi32(yf1);
+                const auto xdw00 = _mm256_castsi256_si128(ydw0);
+                const auto xdw10 = _mm256_castsi256_si128(ydw1);
+                const auto xdw01 = _mm256_extracti128_si256(ydw0, 1);
+                const auto xdw11 = _mm256_extracti128_si256(ydw1, 1);
+                const auto xw0 = _mm_packus_epi32(xdw00, xdw01);
+                const auto xw1 = _mm_packus_epi32(xdw10, xdw11);
+                const auto xw = _mm_packus_epi16(xw0, xw1);
+                _mm_storeu_si128((__m128i*)&pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel], xw);
+
+                //__m128 h0, h1;
+                //asm(
+                //    R"???(
+                //        vcvttps2dq %[y0], %[y0]
+                //        vcvttps2dq %[y1], %[y1]
+                //        vextracti128 $1, %[y0], %[h0]
+                //        vextracti128 $1, %[y1], %[h1]
+                //        vpackssdw %[h0], %x[y0], %x[y0]
+                //        vpackssdw %[h1], %x[y1], %x[y1]
+                //        vpackuswb %x[y1], %x[y0], %x[y0]
+                //        vmovdqu %x[y0], %[res]
+                //    )???"
+                //    : [y0]"+x"(yf0)
+                //    , [y1]"+x"(yf1)
+                //    , [h0]"=x"(h0)
+                //    , [h1]"=x"(h1)
+                //    , [res]"=m"((__m128&)pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel])
+                //);
+            //#if SIMPLIFY_START
+            //    for (auto ic = 0; ic < kRatio; ++ic)
+            //#else
+            //    for (auto ic = c == 1 ? 1 : 0; ic < kRatio; ++ic)
+            //#endif
+            //    {
+            //    #if PRECOMPUTE_COEFFS
+            //        const auto& coeffs = kCoeffs.m_Data[ir][ic];
+            //    #else
+            //        float coeffs[4][4];
+            //        const auto x = float(r * kRatio + ir) / kRatioFloat;
+            //        const auto y = float(c * kRatio + ic) / kRatioFloat;
+            //        CalcCoeff4x4(x - floor(x), y - floor(y), coeffs);
+            //    #endif
+            //        float sums[kNChannel]{};
+            //        for (auto i = 0; i < 4; ++i)
+            //            for (auto j = 0; j < 4; ++j)
+            //                for (auto ch = 0; ch < kNChannel; ++ch)
+            //                    sums[ch] += coeffs[i][j] * in[i][j][ch];
+            //        for (int ch = 0; ch < kNChannel; ++ch)
+            //            pRes[((r * kRatio + ir) * nResCol + (c * kRatio + ic)) * kNChannel + ch] = static_cast<unsigned char>(sums[ch]);
+            //    }
             }
         }
     }
