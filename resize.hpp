@@ -89,13 +89,13 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
 
     for (auto r = 1; r < nRow - 2; ++r)
     {
-    #if SIMPLIFY_START
-        for (auto ir = 0; ir < kRatio; ++ir)
-    #else
-        for (auto ir = r == 1 ? 1 : 0; ir < kRatio; ++ir)
-    #endif
+        for (auto c = 1; c < nCol - 2; ++c)
         {
-            for (auto c = 1; c < nCol - 2; ++c)
+        #if SIMPLIFY_START
+            for (auto ir = 0; ir < kRatio; ++ir)
+        #else
+            for (auto ir = r == 1 ? 1 : 0; ir < kRatio; ++ir)
+        #endif
             {
             #if SIMPLIFY_START
                 for (auto ic = 0; ic < kRatio; ++ic)
