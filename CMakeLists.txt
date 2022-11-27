@@ -6,6 +6,6 @@ string(REGEX REPLACE "(-O[0123s])" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_D
 string(REGEX REPLACE "(-O[0123s])" "" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
 string(REGEX REPLACE "(-O[0123s])" "" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
 
-set(CMAKE_CXX_FLAGS "-O3 -std=c++17 -march=native")
+add_compile_options(-O3 -std=c++17 -march=native)
 
 add_executable(resize main.cpp)

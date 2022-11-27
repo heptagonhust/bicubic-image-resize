@@ -87,28 +87,20 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
 #define PRECOMPUTE_COEFFS 1
 #define SIMPLIFY_START 0
 
-    const auto* pInRow = src.data;
-#if SIMPLIFY_START
-    auto* pOutRow = &pRes[(kRatio * nResCol + kRatio) * kNChannel];
-#else
-    auto* pOutRow = &pRes[((kRatio + 1) * nResCol + kRatio + 1) * kNChannel];
-#endif
-    for (auto r = 1; r < nRow - 2; ++r, pInRow += nCol * kNChannel)
+    for (auto r = 1; r < nRow - 2; ++r)
     {
     #if SIMPLIFY_START
-        for (auto ir = 0; ir < kRatio; ++ir, pOutRow += nResCol * kNChannel)
+        for (auto ir = 0; ir < kRatio; ++ir)
     #else
-        for (auto ir = r == 1 ? 1 : 0; ir < kRatio; ++ir, pOutRow += nResCol * kNChannel)
+        for (auto ir = r == 1 ? 1 : 0; ir < kRatio; ++ir)
     #endif
         {
-            const auto* pIn = pInRow;
-            auto* pOut = pOutRow;
-            for (auto c = 1; c < nCol - 2; ++c, pIn += kNChannel)
+            for (auto c = 1; c < nCol - 2; ++c)
             {
             #if SIMPLIFY_START
-                for (auto ic = 0; ic < kRatio; ++ic, pOut += kNChannel)
+                for (auto ic = 0; ic < kRatio; ++ic)
             #else
-                for (auto ic = c == 1 ? 1 : 0; ic < kRatio; ++ic, pOut += kNChannel)
+                for (auto ic = c == 1 ? 1 : 0; ic < kRatio; ++ic)
             #endif
                 {
                 #if PRECOMPUTE_COEFFS
@@ -119,17 +111,13 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                     const auto y = float(c * kRatio + ic) / kRatioFloat;
                     CalcCoeff4x4(x - floor(x), y - floor(y), coeffs);
                 #endif
-                    const auto* pInInnerRow = pIn;
                     float sums[kNChannel]{};
-                    for (auto i = 0; i < 4; ++i, pInInnerRow += nCol * kNChannel)
-                    {
-                        const auto* pInInner = pInInnerRow;
-                        for (auto j = 0; j < 4; ++j, pInInner += kNChannel)
+                    for (auto i = 0; i < 4; ++i)
+                        for (auto j = 0; j < 4; ++j)
                             for (auto ch = 0; ch < kNChannel; ++ch)
-                                sums[ch] += coeffs[i][j] * pInInner[ch];
-                    }
+                                sums[ch] += coeffs[i][j] * src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
                     for (int ch = 0; ch < kNChannel; ++ch)
-                        pOut[ch] = static_cast<unsigned char>(sums[ch]);
+                        pRes[((r * kRatio + ir) * nResCol + (c * kRatio + ic)) * kNChannel + ch] = static_cast<unsigned char>(sums[ch]);
                 }
             }
         }
