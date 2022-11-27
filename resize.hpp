@@ -8,8 +8,7 @@
 #include <cmath>
 #include <immintrin.h> //AVX(include wmmintrin.h)
 //#include <intrin.h>    //(include immintrin.h)
-
-#define N 8
+#define N 10
 float WeightCoeff(float x, float a) {
   float temp = x * x;//not int temp!!
   if (x <= 1) {
@@ -44,16 +43,16 @@ void CalcCoeff4x4(float x, float y, float *coeff) {
     WeightCoeff_u[2] = WeightCoeff_u[6] = WeightCoeff_u[10] = WeightCoeff_u[14] = WeightCoeff(fabs(u - 2), a);
     WeightCoeff_u[3] = WeightCoeff_u[7] = WeightCoeff_u[11] = WeightCoeff_u[15] = WeightCoeff(fabs(u - 3), a);
 
-  __m256 s = _mm256_loadu_ps (WeightCoeff_u);
-  __m256 t = _mm256_loadu_ps (WeightCoeff_v);
-  __m256 rst1 = _mm256_mul_ps (s,t);
-  _mm256_storeu_ps(coeff,rst1);
-
+  __m512 s = _mm512_loadu_ps (WeightCoeff_u);
+  __m512 t = _mm512_loadu_ps (WeightCoeff_v);
+  __m512 rst = _mm512_mul_ps (s,t);
+  _mm512_storeu_ps(coeff,rst);
+/*
   __m256 c = _mm256_loadu_ps (WeightCoeff_u+8);
   __m256 d = _mm256_loadu_ps (WeightCoeff_v+8);
   __m256 rst2 = _mm256_mul_ps (c,d);
   _mm256_storeu_ps(coeff+8,rst2);
-
+*/
 
 }
 
@@ -65,7 +64,7 @@ unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,int cha
   
 
   float sum = .0f;
-  //#pragma simd 负优化。
+  //#pragma simd 负优化。95.156
   for (int i = 0; i < 4; i++) {
   for (int j = 0; j < 4; j++) {
      sum += coeff[i * 4 + j] * src.data[((x0 + i) * src.cols + y0 + j) * channels + d];
@@ -97,7 +96,7 @@ unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,int cha
   return static_cast<unsigned char>(sum);
 }
 int SubResize(RGBImage src,unsigned char *res,int channels,int resize_rows,int resize_cols,float ratio,int block_x,int block_y){
-  Timer part("part");
+  //Timer part("part");
   auto check_perimeter = [src](float x, float y) -> bool {
     return x < src.rows - 2 && x > 1 && y < src.cols - 2 && y > 1;
   };
