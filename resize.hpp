@@ -4,6 +4,8 @@
 #include "utils.hpp"
 #include <cmath>
 
+#include <immintrin.h>
+
 constexpr float WeightCoeff(float x, float a)
 {
     if (x <= 1)
@@ -86,16 +88,111 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
 
 #define PRECOMPUTE_COEFFS 1
 #define SIMPLIFY_START 0
+#define LOAD_IN_YMM 0
+#define LOAD_IN_XMM 1
+#define LOAD_IN_INTRIN 1
 
     for (auto r = 1; r < nRow - 2; ++r)
     {
         for (auto c = 1; c < nCol - 2; ++c)
         {
-            float in[4][4][3];
+            alignas(32) float in[4][4][kNChannel];
+        #if LOAD_IN_INTRIN
+            {
+            #if LOAD_IN_YMM
+                const auto in00 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel]);
+                const auto in01 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 8]);
+                const auto in10 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[(r * nCol + (c - 1)) * kNChannel]);
+                const auto in11 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[(r * nCol + (c - 1)) * kNChannel + 4]);
+                const auto in20 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel]);
+                const auto in21 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 8]);
+                const auto in30 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel]);
+                const auto in31 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 4]);
+                const auto in0110 = _mm256_permute2x128_si256(_mm256_castsi128_si256(in01), _mm256_castsi128_si256(in10), 0b0010'0000);
+                const auto in2130 = _mm256_permute2x128_si256(_mm256_castsi128_si256(in21), _mm256_castsi128_si256(in30), 0b0010'0000);
+                const auto fin00 = _mm256_cvtepi32_ps(in00);
+                const auto fin0110 = _mm256_cvtepi32_ps(in0110);
+                const auto fin11 = _mm256_cvtepi32_ps(in11);
+                const auto fin20 = _mm256_cvtepi32_ps(in20);
+                const auto fin2130 = _mm256_cvtepi32_ps(in2130);
+                const auto fin31 = _mm256_cvtepi32_ps(in31);
+                _mm256_store_ps((float*)&in + 0, fin00);
+                _mm256_store_ps((float*)&in + 8, fin0110);
+                _mm256_store_ps((float*)&in + 16, fin11);
+                _mm256_store_ps((float*)&in + 24, fin20);
+                _mm256_store_ps((float*)&in + 32, fin2130);
+                _mm256_store_ps((float*)&in + 40, fin31);
+            #elif LOAD_IN_XMM
+                const auto in00 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 0]);
+                const auto in01 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 4]);
+                const auto in02 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 8]);
+                const auto in10 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c - 1)) * kNChannel + 0]);
+                const auto in11 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c - 1)) * kNChannel + 4]);
+                const auto in12 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c - 1)) * kNChannel + 8]);
+                const auto in20 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 0]);
+                const auto in21 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 4]);
+                const auto in22 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 8]);
+                const auto in30 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 0]);
+                const auto in31 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 4]);
+                const auto in32 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 8]);
+                const auto fin00 = _mm_cvtepi32_ps(in00);
+                const auto fin01 = _mm_cvtepi32_ps(in01);
+                const auto fin02 = _mm_cvtepi32_ps(in02);
+                const auto fin10 = _mm_cvtepi32_ps(in10);
+                const auto fin11 = _mm_cvtepi32_ps(in11);
+                const auto fin12 = _mm_cvtepi32_ps(in12);
+                const auto fin20 = _mm_cvtepi32_ps(in20);
+                const auto fin21 = _mm_cvtepi32_ps(in21);
+                const auto fin22 = _mm_cvtepi32_ps(in22);
+                const auto fin30 = _mm_cvtepi32_ps(in30);
+                const auto fin31 = _mm_cvtepi32_ps(in31);
+                const auto fin32 = _mm_cvtepi32_ps(in32);
+                _mm_store_ps((float*)&in[0] + 0, fin00);
+                _mm_store_ps((float*)&in[0] + 4, fin01);
+                _mm_store_ps((float*)&in[0] + 8, fin02);
+                _mm_store_ps((float*)&in[1] + 0, fin10);
+                _mm_store_ps((float*)&in[1] + 4, fin11);
+                _mm_store_ps((float*)&in[1] + 8, fin12);
+                _mm_store_ps((float*)&in[2] + 0, fin20);
+                _mm_store_ps((float*)&in[2] + 4, fin21);
+                _mm_store_ps((float*)&in[2] + 8, fin22);
+                _mm_store_ps((float*)&in[3] + 0, fin30);
+                _mm_store_ps((float*)&in[3] + 4, fin31);
+                _mm_store_ps((float*)&in[3] + 8, fin32);
+            #else
+                const auto in00 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel]);
+                const auto in01 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 8]);
+                const auto in10 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[(r * nCol + (c - 1)) * kNChannel]);
+                const auto in11 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[(r * nCol + (c - 1)) * kNChannel + 8]);
+                const auto in20 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel]);
+                const auto in21 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 8]);
+                const auto in30 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel]);
+                const auto in31 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 8]);
+                const auto fin00 = _mm256_cvtepi32_ps(in00);
+                const auto fin01 = _mm_cvtepi32_ps(in01);
+                const auto fin10 = _mm256_cvtepi32_ps(in10);
+                const auto fin11 = _mm_cvtepi32_ps(in11);
+                const auto fin20 = _mm256_cvtepi32_ps(in20);
+                const auto fin21 = _mm_cvtepi32_ps(in21);
+                const auto fin30 = _mm256_cvtepi32_ps(in30);
+                const auto fin31 = _mm_cvtepi32_ps(in31);
+                _mm256_store_ps(&in[0][0][0], fin00);
+                _mm_store_ps(&in[0][2][2], fin01);
+                _mm256_store_ps(&in[1][0][0], fin10);
+                _mm_store_ps(&in[1][2][2], fin11);
+                _mm256_store_ps(&in[2][0][0], fin20);
+                _mm_store_ps(&in[2][2][2], fin21);
+                _mm256_store_ps(&in[3][0][0], fin30);
+                _mm_store_ps(&in[3][2][2], fin31);
+            #endif
+            }
+        #else
             for (auto i = 0; i < 4; ++i)
                 for (auto j = 0; j < 4; ++j)
                     for (auto ch = 0; ch < kNChannel; ++ch)
                         in[i][j][ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
+        #endif
+
         #if SIMPLIFY_START
             for (auto ir = 0; ir < kRatio; ++ir)
         #else
