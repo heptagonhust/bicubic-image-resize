@@ -114,7 +114,7 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
 #define LOAD_IN_XMM 1
 #define LOAD_IN_INTRIN 1
 
-    //#pragma omp parallel for
+    #pragma omp parallel for
     for (auto r = 1; r < nRow - 2; ++r)
     {
         for (auto c = 1; c < nCol - 2; ++c)
@@ -126,44 +126,12 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                         for (auto ch = 0; ch < kNChannel; ++ch)
                             in012[i][j][ic * kNChannel + ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
 
-            //alignas(32) float in[4][4][kNChannel];
-            //for (auto i = 0; i < 4; ++i)
-            //    for (auto j = 0; j < 4; ++j)
-            //        for (auto ch = 0; ch < kNChannel; ++ch)
-            //            in[i][j][ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
-
         #if SIMPLIFY_START
             for (auto ir = 0; ir < kRatio; ++ir)
         #else
             for (auto ir = r == 1 ? 1 : 0; ir < kRatio; ++ir)
         #endif
             {
-                //float sums[16]{};
-                //const auto& coeffs = kCoeffsSwizzled[ir];
-                //for (auto i = 0; i < 4; ++i)
-                //    for (auto j = 0; j < 4; ++j)
-                //        for (auto k = 0; k < 16; ++k)
-                //            sums[k] += coeffs[i][j][k] * in012[i][j][k];
-                //for (auto k = 0; k < 16; ++k)
-                //    sums[k] = __builtin_fmin(__builtin_fmaxf(sums[k], 0.0f), 255.0f);
-                //for (auto i = 0; i < 4; ++i)
-                //    for (auto j = 0; j < 4; ++j)
-                //        for (auto ic = 0; ic < kRatio; ++ic)
-                //            for (auto ch = 0; ch < kNChannel; ++ch)
-                //                sums[ic * kNChannel + ch] += kCoeffs[ir][ic][i][j] * in[i][j][ch];
-                //const auto yf0 = _mm256_load_ps(&sums[0]);
-                //const auto yf1 = _mm256_load_ps(&sums[8]);
-                //for (auto k = 0; k < 16; ++k)
-                //    pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel + k] = sums[k];
-                //for (auto ic = 0; ic < kRatio; ++ic)
-                //{
-                //    for (auto ch = 0; ch < kNChannel; ++ch)
-                //    {
-                //        //pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel + (ic * kNChannel + ch)] = sums[ic * kNChannel + ch];
-                //        pRes[((r * kRatio + ir) * nResCol +  c * kRatio + ic ) * kNChannel + ch] = sums[ic * kNChannel + ch];
-                //        //pRes[((r * kRatio + ir) * nResCol + (c * kRatio + ic)) * kNChannel + ch] = sums[ic * kNChannel + ch];
-                //    }
-                //}
                 const auto& coeffs = kCoeffsSwizzled.m_Data[ir];
                 auto yf0 = _mm256_setzero_ps();
                 auto yf1 = _mm256_setzero_ps();
@@ -174,11 +142,6 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                         yf0 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][0]), _mm256_load_ps(&in012[i][j][0]), yf0);
                         yf1 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][8]), _mm256_load_ps(&in012[i][j][8]), yf1);
                     }
-                //_mm256_store_ps(&sums[0], yf0);
-                //_mm256_store_ps(&sums[8], yf1);
-
-                //for (auto k = 0; k < 16; ++k)
-                //    pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel + k] = sums[k];
 
                 const auto ydw0 = _mm256_cvttps_epi32(yf0);
                 const auto ydw1 = _mm256_cvttps_epi32(yf1);
@@ -190,47 +153,6 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                 const auto xw1 = _mm_packus_epi32(xdw10, xdw11);
                 const auto xw = _mm_packus_epi16(xw0, xw1);
                 _mm_storeu_si128((__m128i*)&pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel], xw);
-
-                //__m128 h0, h1;
-                //asm(
-                //    R"???(
-                //        vcvttps2dq %[y0], %[y0]
-                //        vcvttps2dq %[y1], %[y1]
-                //        vextracti128 $1, %[y0], %[h0]
-                //        vextracti128 $1, %[y1], %[h1]
-                //        vpackssdw %[h0], %x[y0], %x[y0]
-                //        vpackssdw %[h1], %x[y1], %x[y1]
-                //        vpackuswb %x[y1], %x[y0], %x[y0]
-                //        vmovdqu %x[y0], %[res]
-                //    )???"
-                //    : [y0]"+x"(yf0)
-                //    , [y1]"+x"(yf1)
-                //    , [h0]"=x"(h0)
-                //    , [h1]"=x"(h1)
-                //    , [res]"=m"((__m128&)pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel])
-                //);
-            //#if SIMPLIFY_START
-            //    for (auto ic = 0; ic < kRatio; ++ic)
-            //#else
-            //    for (auto ic = c == 1 ? 1 : 0; ic < kRatio; ++ic)
-            //#endif
-            //    {
-            //    #if PRECOMPUTE_COEFFS
-            //        const auto& coeffs = kCoeffs.m_Data[ir][ic];
-            //    #else
-            //        float coeffs[4][4];
-            //        const auto x = float(r * kRatio + ir) / kRatioFloat;
-            //        const auto y = float(c * kRatio + ic) / kRatioFloat;
-            //        CalcCoeff4x4(x - floor(x), y - floor(y), coeffs);
-            //    #endif
-            //        float sums[kNChannel]{};
-            //        for (auto i = 0; i < 4; ++i)
-            //            for (auto j = 0; j < 4; ++j)
-            //                for (auto ch = 0; ch < kNChannel; ++ch)
-            //                    sums[ch] += coeffs[i][j] * in[i][j][ch];
-            //        for (int ch = 0; ch < kNChannel; ++ch)
-            //            pRes[((r * kRatio + ir) * nResCol + (c * kRatio + ic)) * kNChannel + ch] = static_cast<unsigned char>(sums[ch]);
-            //    }
             }
         }
     }
