@@ -1,3 +1,5 @@
+//I keep some older code in the comments. 
+
 #ifndef RESIZE_H_
 #define RESIZE_H_
 
@@ -8,7 +10,7 @@
 #include <cmath>
 #include <immintrin.h> //AVX(include wmmintrin.h)
 //#include <intrin.h>    //(include immintrin.h)
-#define N 10
+//#define N 10
 float WeightCoeff(float x, float a) {
   float temp = x * x;//not int temp!!
   if (x <= 1) {
@@ -42,21 +44,27 @@ void CalcCoeff4x4(float x, float y, float *coeff) {
     WeightCoeff_u[1] = WeightCoeff_u[5] = WeightCoeff_u[9] = WeightCoeff_u[13] = WeightCoeff(fabs(u - 1), a);
     WeightCoeff_u[2] = WeightCoeff_u[6] = WeightCoeff_u[10] = WeightCoeff_u[14] = WeightCoeff(fabs(u - 2), a);
     WeightCoeff_u[3] = WeightCoeff_u[7] = WeightCoeff_u[11] = WeightCoeff_u[15] = WeightCoeff(fabs(u - 3), a);
-
+///*
   __m512 s = _mm512_loadu_ps (WeightCoeff_u);
   __m512 t = _mm512_loadu_ps (WeightCoeff_v);
   __m512 rst = _mm512_mul_ps (s,t);
   _mm512_storeu_ps(coeff,rst);
+
+//*/
 /*
+  __m256 e = _mm256_loadu_ps (WeightCoeff_u);
+  __m256 f = _mm256_loadu_ps (WeightCoeff_v);
+  __m256 rst1 = _mm256_mul_ps (e,f);
+  _mm256_storeu_ps(coeff,rst1);
   __m256 c = _mm256_loadu_ps (WeightCoeff_u+8);
   __m256 d = _mm256_loadu_ps (WeightCoeff_v+8);
   __m256 rst2 = _mm256_mul_ps (c,d);
   _mm256_storeu_ps(coeff+8,rst2);
-*/
 
+*/
 }
 
-unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,int channels, int d,float coeff[16]) {
+unsigned char BGRAfterBiCubic(RGBImage * src, float x_float, float y_float,int channels, int d,float coeff[16]) {
   
 
   int x0 = floor(x_float) - 1;
@@ -64,10 +72,11 @@ unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,int cha
   
 
   float sum = .0f;
-  //#pragma simd 负优化。95.156
+  //#pragma simd 负优化。
+
   for (int i = 0; i < 4; i++) {
   for (int j = 0; j < 4; j++) {
-     sum += coeff[i * 4 + j] * src.data[((x0 + i) * src.cols + y0 + j) * channels + d];
+     sum += coeff[i * 4 + j] * src->data[((x0 + i) * src->cols + y0 + j) * channels + d];
    }
  }
 /*
@@ -95,7 +104,7 @@ unsigned char BGRAfterBiCubic(RGBImage src, float x_float, float y_float,int cha
 
   return static_cast<unsigned char>(sum);
 }
-int SubResize(RGBImage src,unsigned char *res,int channels,int resize_rows,int resize_cols,float ratio,int block_x,int block_y){
+int SubResize(RGBImage src,unsigned char *res,int channels,int resize_rows,int resize_cols,float ratio,int block_x,int block_y,int N){
   //Timer part("part");
   auto check_perimeter = [src](float x, float y) -> bool {
     return x < src.rows - 2 && x > 1 && y < src.cols - 2 && y > 1;
@@ -105,9 +114,9 @@ int SubResize(RGBImage src,unsigned char *res,int channels,int resize_rows,int r
   int step_x = resize_cols / N + 1;//步长的计算，+1 消去截断误差的影响（最后一个块会小一点）
   int step_y = resize_rows / N + 1;
 /*
-<---x(i)-->
+<---y,j-->
 *********|
-*********y,j
+*********x,i
 *********|
 3 rows,9colunms,
 */
@@ -120,9 +129,9 @@ int SubResize(RGBImage src,unsigned char *res,int channels,int resize_rows,int r
       if (check_perimeter(src_x, src_y)) {
         //for (int d = 0; d < channels; d++) {
           CalcCoeff4x4(src_x, src_y, coeff);
-          res[((i * resize_cols) + j) * channels] = BGRAfterBiCubic(src, src_x, src_y, channels, 0,coeff);//(before)>>> resize image by 5x: 67ms save image ../images/CS_5x.jpg(after)
-          res[((i * resize_cols) + j) * channels+1] = BGRAfterBiCubic(src, src_x, src_y, channels, 1,coeff);
-          res[((i * resize_cols) + j) * channels+2] = BGRAfterBiCubic(src, src_x, src_y, channels, 2,coeff);
+          res[((i * resize_cols) + j) * channels] = BGRAfterBiCubic(&src, src_x, src_y, channels, 0,coeff);//(before)>>> resize image by 5x: 67ms save image ../images/CS_5x.jpg(after)
+          res[((i * resize_cols) + j) * channels+1] = BGRAfterBiCubic(&src, src_x, src_y, channels, 1,coeff);
+          res[((i * resize_cols) + j) * channels+2] = BGRAfterBiCubic(&src, src_x, src_y, channels, 2,coeff);
         //}
       }
     }
@@ -130,6 +139,9 @@ int SubResize(RGBImage src,unsigned char *res,int channels,int resize_rows,int r
   return 0;
 }
 RGBImage ResizeImage(RGBImage src, float ratio){
+  int N;
+  if(src.cols<300)N=6;
+  else N = 10;
   const int channels = src.channels;
   Timer timer("resize image by 5x");
   int resize_rows = src.rows * ratio;
@@ -142,7 +154,7 @@ RGBImage ResizeImage(RGBImage src, float ratio){
   for(int block_x=0;block_x < N;block_x++){
     for(int block_y=0;block_y < N;block_y++){
      // for(int channel = 0;channel<channels;channel++)//best 4*4 not 4*4*3
-        MyThread[i++]=std::thread(SubResize,src,res,channels,resize_rows,resize_cols,ratio,block_x,block_y);//分配计算任务给多个线程
+        MyThread[i++]=std::thread(SubResize,src,res,channels,resize_rows,resize_cols,ratio,block_x,block_y,N);//分配计算任务给多个线程
       }
   }
   for(int i = 0;i < N * N;i++){
