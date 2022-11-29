@@ -3,6 +3,7 @@
 #include "utils.hpp"
 #include <iostream>
 #include <string>
+#include <thread>
 
 
 int main(int argc, char **argv) {
@@ -13,8 +14,7 @@ int main(int argc, char **argv) {
   }
   std::string src_name(argv[1]);
   auto image = LoadImage(src_name);
-  float ratio = 5.f;
-
+  const float ratio = 5.f;
   auto image_after_resize = ResizeImage(image, ratio);
 
   int name_len = src_name.find_last_of('.');
