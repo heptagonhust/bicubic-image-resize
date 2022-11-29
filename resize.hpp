@@ -169,17 +169,21 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
 #define LOAD_IN_INTRIN 1
 
 #define ROTATE_DELTA 0
-#define LOAD_DELTA_INTRIN 0
+#define LOAD_ROTATE_DELTA_INTRIN 0
+
+#define LOAD_DELTA_INTRIN 1
+#define LOAD_DELTA_CP_INTRIN 1
 
     PROF_SCOPED_MARKER("WorkLoop");
 
     #pragma omp parallel for
     for (auto r = 1; r < nRow - 2; ++r)
     {
+        PROF_SCOPED_COND_CAPTURE(r == 123);
         //PROF_SCOPED_MARKER("SourceRow");
         alignas(32) float in012[4][4][16];
         {
-            //PROF_SCOPED_MARKER("LoadInput");
+            PROF_SCOPED_MARKER("LoadInput");
         #if LOAD_IN_INTRIN
             #if LOAD_IN_YMM
                 const auto ydw00 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 0]);
@@ -305,7 +309,7 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                 constexpr auto j = 3;
             #if ROTATE_DELTA
                 const auto j_ = (c + 2) & 3;
-                #if LOAD_DELTA_INTRIN
+                #if LOAD_ROTATE_DELTA_INTRIN
                     const auto xdw0 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c + j - 1)) * kNChannel]);
                     const auto xdw1 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c + j - 1)) * kNChannel]);
                     const auto xdw2 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c + j - 1)) * kNChannel]);
@@ -340,22 +344,42 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                                 in012[i][j_][ic * kNChannel + ch] = in[i][ch];
                 #endif
             // TODO: Change this macro
-            #elif LOAD_IN_INTRIN
-                alignas(32) float in[4][kNChannel];
-                for (auto i = 0; i < 4; ++i)
-                    for (auto ch = 0; ch < kNChannel; ++ch)
-                        in[i][ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
-                for (auto i = 0; i < 4; ++i)
-                {
-                    for (auto j = 0; j < 3; ++j)
-                    {
-                        _mm256_store_ps(&in012[i][j][0], _mm256_load_ps(&in012[i][j + 1][0]));
-                        _mm256_store_ps(&in012[i][j][8], _mm256_load_ps(&in012[i][j + 1][8]));
-                    }
-                    for (auto ic = 0; ic < kRatio; ++ic)
-                        for (auto ch = 0; ch < kNChannel; ++ch)
-                            in012[i][j][ic * kNChannel + ch] = in[i][ch];
-                }
+            #elif LOAD_DELTA_INTRIN
+                const auto xdw0 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c + j - 1)) * kNChannel]);
+                const auto xdw1 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c + j - 1)) * kNChannel]);
+                const auto xdw2 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c + j - 1)) * kNChannel]);
+                const auto xdw3 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c + j - 1)) * kNChannel]);
+                const auto xf0 = _mm_cvtepi32_ps(xdw0);
+                const auto xf1 = _mm_cvtepi32_ps(xdw1);
+                const auto xf2 = _mm_cvtepi32_ps(xdw2);
+                const auto xf3 = _mm_cvtepi32_ps(xdw3);
+                #define MAKE_SW(i) \
+                    const auto xsw##i##0 = _mm_permute_ps(xf##i, _MM_SHUFFLE(0, 2, 1, 0)); /* 00 01 02 00 */ \
+                    const auto xsw##i##1 = _mm_permute_ps(xf##i, _MM_SHUFFLE(1, 0, 2, 1)); /* 01 02 00 01 */ \
+                    const auto xsw##i##2 = _mm_permute_ps(xf##i, _MM_SHUFFLE(2, 1, 0, 2)); /* 02 00 01 02 */ \
+                    const auto ycp##i##00 = _mm256_load_ps(&in012[i][1][0]); \
+                    const auto ycp##i##01 = _mm256_load_ps(&in012[i][1][8]); \
+                    const auto ycp##i##10 = _mm256_load_ps(&in012[i][2][0]); \
+                    const auto ycp##i##11 = _mm256_load_ps(&in012[i][2][8]); \
+                    const auto ycp##i##20 = _mm256_load_ps(&in012[i][3][0]); \
+                    const auto ycp##i##21 = _mm256_load_ps(&in012[i][3][8]); \
+                    _mm256_store_ps(&in012[i][0][0], ycp##i##00); \
+                    _mm256_store_ps(&in012[i][0][8], ycp##i##01); \
+                    _mm256_store_ps(&in012[i][1][0], ycp##i##10); \
+                    _mm256_store_ps(&in012[i][1][8], ycp##i##11); \
+                    _mm256_store_ps(&in012[i][2][0], ycp##i##20); \
+                    _mm256_store_ps(&in012[i][2][8], ycp##i##21); \
+                    _mm_store_ps(&in012[i][3][ 0], xsw##i##0); \
+                    _mm_store_ps(&in012[i][3][ 4], xsw##i##1); \
+                    _mm_store_ps(&in012[i][3][ 8], xsw##i##2); \
+                    _mm_store_ps(&in012[i][3][12], xsw##i##0);
+
+                MAKE_SW(0);
+                MAKE_SW(1);
+                MAKE_SW(2);
+                MAKE_SW(3);
+
+                #undef MAKE_SW
             #else
                 alignas(32) float in[4][kNChannel];
                 for (auto i = 0; i < 4; ++i)
@@ -363,7 +387,15 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                         in[i][ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
                 for (auto i = 0; i < 4; ++i)
                 {
+                #if LOAD_DELTA_CP_INTRIN
+                    for (auto j = 0; j < 3; ++j)
+                    {
+                        _mm256_store_ps(&in012[i][j][0], _mm256_load_ps(&in012[i][j + 1][0]));
+                        _mm256_store_ps(&in012[i][j][8], _mm256_load_ps(&in012[i][j + 1][8]));
+                    }
+                #else
                     __builtin_memmove(&in012[i][0], &in012[i][1], 3 * 16 * sizeof(float));
+                #endif
                     for (auto ic = 0; ic < kRatio; ++ic)
                         for (auto ch = 0; ch < kNChannel; ++ch)
                             in012[i][j][ic * kNChannel + ch] = in[i][ch];
