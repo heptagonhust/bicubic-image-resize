@@ -1,5 +1,5 @@
 //I keep some older code in the comments. 
-
+//U202115473 刘欣逸 CS2210
 #ifndef RESIZE_H_
 #define RESIZE_H_
 
