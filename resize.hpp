@@ -14,8 +14,10 @@
 
 struct ScopedProfiler
 {
-    ScopedProfiler() { PROF_START(); }
-    ~ScopedProfiler() { PROF_STOP(); }
+    ScopedProfiler(bool cond)
+        : _cond(cond) { if (cond) PROF_START(); }
+    ~ScopedProfiler() { if (_cond) PROF_STOP(); }
+    bool _cond;
 };
 
 struct ScopedProfilerMarker
@@ -35,7 +37,8 @@ struct ScopedProfilerArrayMarker
 #define PROF_CONCAT_(a, b) a ## b
 #define PROF_CONCAT(a, b) PROF_CONCAT_(a, b)
 
-#define PROF_SCOPED_CAPTURE(name) ScopedProfiler PROF_CONCAT(_zw_sp_, __LINE__)
+#define PROF_SCOPED_CAPTURE() ScopedProfiler PROF_CONCAT(_zw_sp_, __LINE__)(true)
+#define PROF_SCOPED_COND_CAPTURE(cond) ScopedProfiler PROF_CONCAT(_zw_sp_, __LINE__)((cond))
 #define PROF_SCOPED_MARKER(name) ScopedProfilerMarker PROF_CONCAT(_zw_spm_, __LINE__)(name)
 #define PROF_SCOPED_MEMORY(name, ptr, size) ScopedProfilerArrayMarker PROF_CONCAT(_zw_spam, __LINE__)(name, ptr, size)
 #else
@@ -47,6 +50,7 @@ struct ScopedProfilerArrayMarker
 #define PROF_UNMARK_MEMORY(ptr)
 
 #define PROF_SCOPED_CAPTURE()
+#define PROF_SCOPED_COND_CAPTURE(cond)
 #define PROF_SCOPED_MARKER(name)
 #define PROF_SCOPED_MEMORY(name, ptr, size)
 #endif
@@ -123,7 +127,7 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
         return {};
 
     Timer timer("resize image by 5x");
-    PROF_SCOPED_CAPTURE();
+    //PROF_SCOPED_CAPTURE();
 
     const auto nRow = src.rows;
     const auto nCol = src.cols;
@@ -164,12 +168,13 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
 #define LOAD_IN_XMM 0
 #define LOAD_IN_INTRIN 1
 
-    PROF_SCOPED_MARKER("Workloop");
+    PROF_SCOPED_MARKER("WorkLoop");
 
     #pragma omp parallel for
     for (auto r = 1; r < nRow - 2; ++r)
     {
         //PROF_SCOPED_MARKER("SourceRow");
+        PROF_SCOPED_COND_CAPTURE(r == 123);
         for (auto c = 1; c < nCol - 2; ++c)
         {
             //PROF_SCOPED_MARKER("SourceColumn");
@@ -292,12 +297,19 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
             }
 
             //PROF_SCOPED_MARKER("YieldTile");
+        //#if SIMPLIFY_START
+        //    for (auto ir = 0; ir < kRatio; ++ir)
+        //#else
+        //    for (auto ir = r == 1 ? 1 : 0; ir < kRatio; ++ir)
+        //#endif
+        //        _mm_prefetch(&pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel], _MM_HINT_NTA);
         #if SIMPLIFY_START
             for (auto ir = 0; ir < kRatio; ++ir)
         #else
             for (auto ir = r == 1 ? 1 : 0; ir < kRatio; ++ir)
         #endif
             {
+                //_mm_prefetch(&pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel], _MM_HINT_NTA);
                 const auto& coeffs = kCoeffsSwizzled.m_Data[ir];
                 auto yf0 = _mm256_setzero_ps();
                 auto yf1 = _mm256_setzero_ps();
