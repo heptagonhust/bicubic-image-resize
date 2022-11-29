@@ -6,6 +6,51 @@
 
 #include <immintrin.h>
 
+#ifdef HAVE_PROFILER
+//#undef HAVE_PROFILER
+#endif
+
+#ifdef HAVE_PROFILER
+
+struct ScopedProfiler
+{
+    ScopedProfiler() { PROF_START(); }
+    ~ScopedProfiler() { PROF_STOP(); }
+};
+
+struct ScopedProfilerMarker
+{
+    ScopedProfilerMarker(const char* name) { PROF_PUSH_MARKER(name); }
+    ~ScopedProfilerMarker() { PROF_POP_MARKER(); }
+};
+
+struct ScopedProfilerArrayMarker
+{
+    ScopedProfilerArrayMarker(const char* name, const void* ptr, size_t size)
+        : _ptr(ptr) { PROF_MARK_MEMORY(name, ptr, size); }
+    ~ScopedProfilerArrayMarker() { PROF_UNMARK_MEMORY(_ptr); }
+    const void* _ptr;
+};
+
+#define PROF_CONCAT_(a, b) a ## b
+#define PROF_CONCAT(a, b) PROF_CONCAT_(a, b)
+
+#define PROF_SCOPED_CAPTURE(name) ScopedProfiler PROF_CONCAT(_zw_sp_, __LINE__)
+#define PROF_SCOPED_MARKER(name) ScopedProfilerMarker PROF_CONCAT(_zw_spm_, __LINE__)(name)
+#define PROF_SCOPED_MEMORY(name, ptr, size) ScopedProfilerArrayMarker PROF_CONCAT(_zw_spam, __LINE__)(name, ptr, size)
+#else
+#define PROF_START()
+#define PROF_STOP()
+#define PROF_PUSH_MARKER(name)
+#define PROF_POP_MARKER()
+#define PROF_MARK_MEMORY(name, ptr, size)
+#define PROF_UNMARK_MEMORY(ptr)
+
+#define PROF_SCOPED_CAPTURE()
+#define PROF_SCOPED_MARKER(name)
+#define PROF_SCOPED_MEMORY(name, ptr, size)
+#endif
+
 constexpr float WeightCoeff(float x, float a)
 {
     if (x <= 1)
@@ -78,15 +123,19 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
         return {};
 
     Timer timer("resize image by 5x");
+    PROF_SCOPED_CAPTURE();
 
     const auto nRow = src.rows;
     const auto nCol = src.cols;
     const auto nResRow = nRow * kRatio;
     const auto nResCol = nCol * kRatio;
 
+    PROF_SCOPED_MEMORY("Source", src.data, kNChannel * nRow * nCol);
+
     printf("resize to: %d x %d\n", nResRow, nResCol);
 
     const auto pRes = new unsigned char[kNChannel * nResRow * nResCol]{};
+    PROF_SCOPED_MEMORY("Result", pRes, kNChannel * nResRow * nResCol);
 
     // Analysis of check_perimeter() in vanilla code:
     // srcRow = r + ir / kRatio
@@ -115,13 +164,18 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
 #define LOAD_IN_XMM 0
 #define LOAD_IN_INTRIN 1
 
+    PROF_SCOPED_MARKER("Workloop");
+
     #pragma omp parallel for
     for (auto r = 1; r < nRow - 2; ++r)
     {
+        //PROF_SCOPED_MARKER("SourceRow");
         for (auto c = 1; c < nCol - 2; ++c)
         {
+            //PROF_SCOPED_MARKER("SourceColumn");
             alignas(32) float in012[4][4][16];
             {
+                //PROF_SCOPED_MARKER("LoadInput");
             #if LOAD_IN_INTRIN
                 #if LOAD_IN_YMM
                     const auto ydw00 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 0]);
@@ -237,7 +291,7 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
             #endif
             }
 
-
+            //PROF_SCOPED_MARKER("YieldTile");
         #if SIMPLIFY_START
             for (auto ir = 0; ir < kRatio; ++ir)
         #else
