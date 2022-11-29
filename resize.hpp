@@ -115,128 +115,203 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
 #define LOAD_IN_XMM 0
 #define LOAD_IN_INTRIN 1
 
+#define ROTATE_DELTA 0
+#define LOAD_DELTA_INTRIN 0
+
     #pragma omp parallel for
     for (auto r = 1; r < nRow - 2; ++r)
     {
-        for (auto c = 1; c < nCol - 2; ++c)
+        alignas(32) float in012[4][4][16];
         {
-            alignas(32) float in012[4][4][16];
-            {
-            #if LOAD_IN_INTRIN
-                #if LOAD_IN_YMM
-                    const auto ydw00 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 0]);
-                    const auto xdw01 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 8]);
-                    const auto ydw10 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c - 1)) * kNChannel + 0]);
-                    const auto xdw11 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r - 0) * nCol + (c - 1)) * kNChannel + 8]);
-                    const auto ydw20 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 0]);
-                    const auto xdw21 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 8]);
-                    const auto ydw30 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 0]);
-                    const auto xdw31 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 8]);
+        #if LOAD_IN_INTRIN
+            #if LOAD_IN_YMM
+                const auto ydw00 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 0]);
+                const auto xdw01 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 8]);
+                const auto ydw10 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (1 - 1)) * kNChannel + 0]);
+                const auto xdw11 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r - 0) * nCol + (1 - 1)) * kNChannel + 8]);
+                const auto ydw20 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (1 - 1)) * kNChannel + 0]);
+                const auto xdw21 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r + 1) * nCol + (1 - 1)) * kNChannel + 8]);
+                const auto ydw30 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (1 - 1)) * kNChannel + 0]);
+                const auto xdw31 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r + 2) * nCol + (1 - 1)) * kNChannel + 8]);
 
-                    #define GET_SW0(y, _2, _1, _0) _mm256_permutevar8x32_ps(y, _mm256_set_epi32(_1, _0, _2, _1, _0, _2, _1, _0))
-                    #define GET_SW1(y, _2, _1, _0) _mm256_permutevar8x32_ps(y, _mm256_set_epi32(_0, _2, _1, _0, _2, _1, _0, _2))
+                #define GET_SW0(y, _2, _1, _0) _mm256_permutevar8x32_ps(y, _mm256_set_epi32(_1, _0, _2, _1, _0, _2, _1, _0))
+                #define GET_SW1(y, _2, _1, _0) _mm256_permutevar8x32_ps(y, _mm256_set_epi32(_0, _2, _1, _0, _2, _1, _0, _2))
 
-                    #define MAKE_SW(i) \
-                        const auto yf##i##0 = _mm256_cvtepi32_ps(ydw##i##0);                      /* 00 01 02 10 11 12 20 21 */ \
-                        const auto yf##i##1 = _mm256_castps128_ps256(_mm_cvtepi32_ps(xdw##i##1)); /* 22 30 31 32 ?? ?? ?? ?? */ \
-                        const auto yf##i##2 = _mm256_blend_ps(yf##i##0, yf##i##1, 0b00001111);    /* 22 ?? ?? ?? ?? ?? 20 21 */ \
-                        const auto ysw##i##00 = GET_SW0(yf##i##0, 2, 1, 0); \
-                        const auto ysw##i##01 = GET_SW1(yf##i##0, 2, 1, 0); \
-                        const auto ysw##i##10 = GET_SW0(yf##i##0, 5, 4, 3); \
-                        const auto ysw##i##11 = GET_SW1(yf##i##0, 5, 4, 3); \
-                        const auto ysw##i##20 = GET_SW0(yf##i##2, 0, 7, 6); \
-                        const auto ysw##i##21 = GET_SW1(yf##i##2, 0, 7, 6); \
-                        const auto ysw##i##30 = GET_SW0(yf##i##2, 3, 2, 1); \
-                        const auto ysw##i##31 = GET_SW1(yf##i##2, 3, 2, 1); \
-                        _mm256_store_ps(&in012[i][0][0], ysw##i##00); \
-                        _mm256_store_ps(&in012[i][0][8], ysw##i##01); \
-                        _mm256_store_ps(&in012[i][1][0], ysw##i##10); \
-                        _mm256_store_ps(&in012[i][1][8], ysw##i##11); \
-                        _mm256_store_ps(&in012[i][2][0], ysw##i##20); \
-                        _mm256_store_ps(&in012[i][2][8], ysw##i##21); \
-                        _mm256_store_ps(&in012[i][3][0], ysw##i##30); \
-                        _mm256_store_ps(&in012[i][3][8], ysw##i##31);
+                #define MAKE_SW(i) \
+                    const auto yf##i##0 = _mm256_cvtepi32_ps(ydw##i##0);                      /* 00 01 02 10 11 12 20 21 */ \
+                    const auto yf##i##1 = _mm256_castps128_ps256(_mm_cvtepi32_ps(xdw##i##1)); /* 22 30 31 32 ?? ?? ?? ?? */ \
+                    const auto yf##i##2 = _mm256_blend_ps(yf##i##0, yf##i##1, 0b00001111);    /* 22 ?? ?? ?? ?? ?? 20 21 */ \
+                    const auto ysw##i##00 = GET_SW0(yf##i##0, 2, 1, 0); \
+                    const auto ysw##i##01 = GET_SW1(yf##i##0, 2, 1, 0); \
+                    const auto ysw##i##10 = GET_SW0(yf##i##0, 5, 4, 3); \
+                    const auto ysw##i##11 = GET_SW1(yf##i##0, 5, 4, 3); \
+                    const auto ysw##i##20 = GET_SW0(yf##i##2, 0, 7, 6); \
+                    const auto ysw##i##21 = GET_SW1(yf##i##2, 0, 7, 6); \
+                    const auto ysw##i##30 = GET_SW0(yf##i##2, 3, 2, 1); \
+                    const auto ysw##i##31 = GET_SW1(yf##i##2, 3, 2, 1); \
+                    _mm256_store_ps(&in012[i][0][0], ysw##i##00); \
+                    _mm256_store_ps(&in012[i][0][8], ysw##i##01); \
+                    _mm256_store_ps(&in012[i][1][0], ysw##i##10); \
+                    _mm256_store_ps(&in012[i][1][8], ysw##i##11); \
+                    _mm256_store_ps(&in012[i][2][0], ysw##i##20); \
+                    _mm256_store_ps(&in012[i][2][8], ysw##i##21); \
+                    _mm256_store_ps(&in012[i][3][0], ysw##i##30); \
+                    _mm256_store_ps(&in012[i][3][8], ysw##i##31);
 
-                    MAKE_SW(0);
-                    MAKE_SW(1);
-                    MAKE_SW(2);
-                    MAKE_SW(3);
+                MAKE_SW(0);
+                MAKE_SW(1);
+                MAKE_SW(2);
+                MAKE_SW(3);
 
-                    #undef GET_SW0
-                    #undef GET_SW1
-                    #undef MAKE_SW
-                #elif LOAD_IN_XMM
-                    const auto xdw00 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 0]);
-                    const auto xdw01 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 4]);
-                    const auto xdw02 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c - 1)) * kNChannel + 8]);
-                    const auto xdw10 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c - 1)) * kNChannel + 0]);
-                    const auto xdw11 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c - 1)) * kNChannel + 4]);
-                    const auto xdw12 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c - 1)) * kNChannel + 8]);
-                    const auto xdw20 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 0]);
-                    const auto xdw21 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 4]);
-                    const auto xdw22 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c - 1)) * kNChannel + 8]);
-                    const auto xdw30 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 0]);
-                    const auto xdw31 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 4]);
-                    const auto xdw32 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c - 1)) * kNChannel + 8]);
-                    const auto xf00 = _mm_cvtepi32_ps(xdw00); // 000 001 002 010
-                    const auto xf01 = _mm_cvtepi32_ps(xdw01); // 011 012 020 021
-                    const auto xf02 = _mm_cvtepi32_ps(xdw02); // 022 030 031 032
-                    const auto xf10 = _mm_cvtepi32_ps(xdw10); // 100 101 102 110
-                    const auto xf11 = _mm_cvtepi32_ps(xdw11); // 111 112 120 121
-                    const auto xf12 = _mm_cvtepi32_ps(xdw12); // 122 130 131 132
-                    const auto xf20 = _mm_cvtepi32_ps(xdw20); // 200 201 202 210
-                    const auto xf21 = _mm_cvtepi32_ps(xdw21); // 211 212 220 221
-                    const auto xf22 = _mm_cvtepi32_ps(xdw22); // 222 230 231 232
-                    const auto xf30 = _mm_cvtepi32_ps(xdw30); // 300 301 302 310
-                    const auto xf31 = _mm_cvtepi32_ps(xdw31); // 311 312 320 321
-                    const auto xf32 = _mm_cvtepi32_ps(xdw32); // 322 330 331 332
+                #undef GET_SW0
+                #undef GET_SW1
+                #undef MAKE_SW
+            #elif LOAD_IN_XMM
+                const auto xdw00 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 0]);
+                const auto xdw01 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 4]);
+                const auto xdw02 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 8]);
+                const auto xdw10 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (1 - 1)) * kNChannel + 0]);
+                const auto xdw11 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (1 - 1)) * kNChannel + 4]);
+                const auto xdw12 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (1 - 1)) * kNChannel + 8]);
+                const auto xdw20 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (1 - 1)) * kNChannel + 0]);
+                const auto xdw21 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (1 - 1)) * kNChannel + 4]);
+                const auto xdw22 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (1 - 1)) * kNChannel + 8]);
+                const auto xdw30 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (1 - 1)) * kNChannel + 0]);
+                const auto xdw31 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (1 - 1)) * kNChannel + 4]);
+                const auto xdw32 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (1 - 1)) * kNChannel + 8]);
+                const auto xf00 = _mm_cvtepi32_ps(xdw00); // 000 001 002 010
+                const auto xf01 = _mm_cvtepi32_ps(xdw01); // 011 012 020 021
+                const auto xf02 = _mm_cvtepi32_ps(xdw02); // 022 030 031 032
+                const auto xf10 = _mm_cvtepi32_ps(xdw10); // 100 101 102 110
+                const auto xf11 = _mm_cvtepi32_ps(xdw11); // 111 112 120 121
+                const auto xf12 = _mm_cvtepi32_ps(xdw12); // 122 130 131 132
+                const auto xf20 = _mm_cvtepi32_ps(xdw20); // 200 201 202 210
+                const auto xf21 = _mm_cvtepi32_ps(xdw21); // 211 212 220 221
+                const auto xf22 = _mm_cvtepi32_ps(xdw22); // 222 230 231 232
+                const auto xf30 = _mm_cvtepi32_ps(xdw30); // 300 301 302 310
+                const auto xf31 = _mm_cvtepi32_ps(xdw31); // 311 312 320 321
+                const auto xf32 = _mm_cvtepi32_ps(xdw32); // 322 330 331 332
 
-                    #define MAKE_SW_(i, j, _2, _1, _0) \
-                        const auto xsw##i##j##0 = _mm_permute_ps(xraw##i##j, _MM_SHUFFLE(_0, _2, _1, _0)); /* 00 01 02 00 */ \
-                        const auto xsw##i##j##1 = _mm_permute_ps(xraw##i##j, _MM_SHUFFLE(_1, _0, _2, _1)); /* 01 02 00 01 */ \
-                        const auto xsw##i##j##2 = _mm_permute_ps(xraw##i##j, _MM_SHUFFLE(_2, _1, _0, _2)); /* 02 00 01 02 */ \
-                        _mm_store_ps(&in012[i][j][ 0], xsw##i##j##0); \
-                        _mm_store_ps(&in012[i][j][ 4], xsw##i##j##1); \
-                        _mm_store_ps(&in012[i][j][ 8], xsw##i##j##2); \
-                        _mm_store_ps(&in012[i][j][12], xsw##i##j##0);
-                    #define MAKE_SW(i) \
-                        const auto xraw##i##0 = xf##i##0;                                 /* 00 01 02 ?? */ \
-                        const auto xraw##i##1 = _mm_blend_ps(xf##i##0, xf##i##1, 0b0011); /* 11 12 ?? 10 */ \
-                        const auto xraw##i##2 = _mm_blend_ps(xf##i##1, xf##i##2, 0b0011); /* 22 ?? 20 21 */ \
-                        const auto xraw##i##3 = xf##i##2;                                 /* ?? 30 31 32 */ \
-                        MAKE_SW_(i, 0, 2, 1, 0) \
-                        MAKE_SW_(i, 1, 1, 0, 3) \
-                        MAKE_SW_(i, 2, 0, 3, 2) \
-                        MAKE_SW_(i, 3, 3, 2, 1)
+                #define MAKE_SW_(i, j, _2, _1, _0) \
+                    const auto xsw##i##j##0 = _mm_permute_ps(xraw##i##j, _MM_SHUFFLE(_0, _2, _1, _0)); /* 00 01 02 00 */ \
+                    const auto xsw##i##j##1 = _mm_permute_ps(xraw##i##j, _MM_SHUFFLE(_1, _0, _2, _1)); /* 01 02 00 01 */ \
+                    const auto xsw##i##j##2 = _mm_permute_ps(xraw##i##j, _MM_SHUFFLE(_2, _1, _0, _2)); /* 02 00 01 02 */ \
+                    _mm_store_ps(&in012[i][j][ 0], xsw##i##j##0); \
+                    _mm_store_ps(&in012[i][j][ 4], xsw##i##j##1); \
+                    _mm_store_ps(&in012[i][j][ 8], xsw##i##j##2); \
+                    _mm_store_ps(&in012[i][j][12], xsw##i##j##0);
+                #define MAKE_SW(i) \
+                    const auto xraw##i##0 = xf##i##0;                                 /* 00 01 02 ?? */ \
+                    const auto xraw##i##1 = _mm_blend_ps(xf##i##0, xf##i##1, 0b0011); /* 11 12 ?? 10 */ \
+                    const auto xraw##i##2 = _mm_blend_ps(xf##i##1, xf##i##2, 0b0011); /* 22 ?? 20 21 */ \
+                    const auto xraw##i##3 = xf##i##2;                                 /* ?? 30 31 32 */ \
+                    MAKE_SW_(i, 0, 2, 1, 0) \
+                    MAKE_SW_(i, 1, 1, 0, 3) \
+                    MAKE_SW_(i, 2, 0, 3, 2) \
+                    MAKE_SW_(i, 3, 3, 2, 1)
 
-                    MAKE_SW(0);
-                    MAKE_SW(1);
-                    MAKE_SW(2);
-                    MAKE_SW(3);
+                MAKE_SW(0);
+                MAKE_SW(1);
+                MAKE_SW(2);
+                MAKE_SW(3);
 
-                    #undef MAKE_SW_
-                    #undef MAKE_SW
-                #else
-                    alignas(32) float in[4][4][kNChannel];
-                    for (auto i = 0; i < 4; ++i)
-                        for (auto j = 0; j < 4; ++j)
-                            for (auto ch = 0; ch < kNChannel; ++ch)
-                                in[i][j][ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
-                    for (auto i = 0; i < 4; ++i)
-                        for (auto j = 0; j < 4; ++j)
-                            for (auto ic = 0; ic < kRatio; ++ic)
-                                for (auto ch = 0; ch < kNChannel; ++ch)
-                                    in012[i][j][ic * kNChannel + ch] = in[i][j][ch];
-                #endif
+                #undef MAKE_SW_
+                #undef MAKE_SW
             #else
-                for (int i = 0; i < 4; ++i)
+                alignas(32) float in[4][4][kNChannel];
+                for (auto i = 0; i < 4; ++i)
+                    for (auto j = 0; j < 4; ++j)
+                        for (auto ch = 0; ch < kNChannel; ++ch)
+                            in[i][j][ch] = src.data[((r + i - 1) * nCol + (1 + j - 1)) * kNChannel + ch];
+                for (auto i = 0; i < 4; ++i)
                     for (auto j = 0; j < 4; ++j)
                         for (auto ic = 0; ic < kRatio; ++ic)
                             for (auto ch = 0; ch < kNChannel; ++ch)
-                                in012[i][j][ic * kNChannel + ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
+                                in012[i][j][ic * kNChannel + ch] = in[i][j][ch];
+            #endif
+        #else
+            for (auto i = 0; i < 4; ++i)
+                for (auto j = 0; j < 4; ++j)
+                    for (auto ic = 0; ic < kRatio; ++ic)
+                        for (auto ch = 0; ch < kNChannel; ++ch)
+                            in012[i][j][ic * kNChannel + ch] = src.data[((r + i - 1) * nCol + (1 + j - 1)) * kNChannel + ch];
+        #endif
+        }
+
+        // TODO: Consider rotate delta by row instead of column, which requires transpose.
+        //       Also find a way to effeciently load delta
+        for (auto c = 1; c < nCol - 2; ++c)
+        {
+            if (c > 1)
+            {
+                constexpr auto j = 3;
+            #if ROTATE_DELTA
+                const auto j_ = (c + 2) & 3;
+                #if LOAD_DELTA_INTRIN
+                    const auto xdw0 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c + j - 1)) * kNChannel]);
+                    const auto xdw1 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c + j - 1)) * kNChannel]);
+                    const auto xdw2 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c + j - 1)) * kNChannel]);
+                    const auto xdw3 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c + j - 1)) * kNChannel]);
+                    const auto xf0 = _mm_cvtepi32_ps(xdw0);
+                    const auto xf1 = _mm_cvtepi32_ps(xdw1);
+                    const auto xf2 = _mm_cvtepi32_ps(xdw2);
+                    const auto xf3 = _mm_cvtepi32_ps(xdw3);
+                    #define MAKE_SW(i) \
+                        const auto xsw##i##0 = _mm_permute_ps(xf##i, _MM_SHUFFLE(0, 2, 1, 0)); /* 00 01 02 00 */ \
+                        const auto xsw##i##1 = _mm_permute_ps(xf##i, _MM_SHUFFLE(1, 0, 2, 1)); /* 01 02 00 01 */ \
+                        const auto xsw##i##2 = _mm_permute_ps(xf##i, _MM_SHUFFLE(2, 1, 0, 2)); /* 02 00 01 02 */ \
+                        _mm_store_ps(&in012[i][j_][ 0], xsw##i##0); \
+                        _mm_store_ps(&in012[i][j_][ 4], xsw##i##1); \
+                        _mm_store_ps(&in012[i][j_][ 8], xsw##i##2); \
+                        _mm_store_ps(&in012[i][j_][12], xsw##i##0);
+
+                    MAKE_SW(0);
+                    MAKE_SW(1);
+                    MAKE_SW(2);
+                    MAKE_SW(3);
+
+                    #undef MAKE_SW
+                #else
+                    alignas(32) float in[4][kNChannel];
+                    for (auto i = 0; i < 4; ++i)
+                        for (auto ch = 0; ch < kNChannel; ++ch)
+                            in[i][ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
+                    for (auto i = 0; i < 4; ++i)
+                        for (auto ic = 0; ic < kRatio; ++ic)
+                            for (auto ch = 0; ch < kNChannel; ++ch)
+                                in012[i][j_][ic * kNChannel + ch] = in[i][ch];
+                #endif
+            // TODO: Change this macro
+            #elif LOAD_IN_INTRIN
+                alignas(32) float in[4][kNChannel];
+                for (auto i = 0; i < 4; ++i)
+                    for (auto ch = 0; ch < kNChannel; ++ch)
+                        in[i][ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
+                for (auto i = 0; i < 4; ++i)
+                {
+                    for (auto j = 0; j < 3; ++j)
+                    {
+                        _mm256_store_ps(&in012[i][j][0], _mm256_load_ps(&in012[i][j + 1][0]));
+                        _mm256_store_ps(&in012[i][j][8], _mm256_load_ps(&in012[i][j + 1][8]));
+                    }
+                    for (auto ic = 0; ic < kRatio; ++ic)
+                        for (auto ch = 0; ch < kNChannel; ++ch)
+                            in012[i][j][ic * kNChannel + ch] = in[i][ch];
+                }
+            #else
+                alignas(32) float in[4][kNChannel];
+                for (auto i = 0; i < 4; ++i)
+                    for (auto ch = 0; ch < kNChannel; ++ch)
+                        in[i][ch] = src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel + ch];
+                for (auto i = 0; i < 4; ++i)
+                {
+                    __builtin_memmove(&in012[i][0], &in012[i][1], 3 * 16 * sizeof(float));
+                    for (auto ic = 0; ic < kRatio; ++ic)
+                        for (auto ch = 0; ch < kNChannel; ++ch)
+                            in012[i][j][ic * kNChannel + ch] = in[i][ch];
+                }
             #endif
             }
-
 
         #if SIMPLIFY_START
             for (auto ir = 0; ir < kRatio; ++ir)
@@ -251,8 +326,13 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                 for (auto i = 0; i < 4; ++i)
                     for (auto j = 0; j < 4; ++j)
                     {
+                    #if ROTATE_DELTA
+                        yf0 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][0]), _mm256_load_ps(&in012[i][(c + j - 1) & 3][0]), yf0);
+                        yf1 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][8]), _mm256_load_ps(&in012[i][(c + j - 1) & 3][8]), yf1);
+                    #else
                         yf0 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][0]), _mm256_load_ps(&in012[i][j][0]), yf0);
                         yf1 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][8]), _mm256_load_ps(&in012[i][j][8]), yf1);
+                    #endif
                     }
 
                 const auto ydw0 = _mm256_cvttps_epi32(yf0);
