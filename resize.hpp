@@ -186,19 +186,21 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
             PROF_SCOPED_MARKER("LoadInput");
         #if LOAD_IN_INTRIN
             #if LOAD_IN_YMM
-                const auto ydw00 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 0]);
-                const auto xdw01 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 8]);
-                const auto ydw10 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (1 - 1)) * kNChannel + 0]);
-                const auto xdw11 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r - 0) * nCol + (1 - 1)) * kNChannel + 8]);
-                const auto ydw20 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (1 - 1)) * kNChannel + 0]);
-                const auto xdw21 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r + 1) * nCol + (1 - 1)) * kNChannel + 8]);
-                const auto ydw30 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (1 - 1)) * kNChannel + 0]);
-                const auto xdw31 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r + 2) * nCol + (1 - 1)) * kNChannel + 8]);
+                //const auto ydw00 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 0]);
+                //const auto xdw01 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 8]);
+                //const auto ydw10 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (1 - 1)) * kNChannel + 0]);
+                //const auto xdw11 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r - 0) * nCol + (1 - 1)) * kNChannel + 8]);
+                //const auto ydw20 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (1 - 1)) * kNChannel + 0]);
+                //const auto xdw21 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r + 1) * nCol + (1 - 1)) * kNChannel + 8]);
+                //const auto ydw30 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (1 - 1)) * kNChannel + 0]);
+                //const auto xdw31 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r + 2) * nCol + (1 - 1)) * kNChannel + 8]);
 
                 #define GET_SW0(y, _2, _1, _0) _mm256_permutevar8x32_ps(y, _mm256_set_epi32(_1, _0, _2, _1, _0, _2, _1, _0))
                 #define GET_SW1(y, _2, _1, _0) _mm256_permutevar8x32_ps(y, _mm256_set_epi32(_0, _2, _1, _0, _2, _1, _0, _2))
 
                 #define MAKE_SW(i) \
+                    const auto ydw##i##0 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + i - 1) * nCol + (1 - 1)) * kNChannel + 0]); \
+                    const auto xdw##i##1 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r + i - 1) * nCol + (1 - 1)) * kNChannel + 8]); \
                     const auto yf##i##0 = _mm256_cvtepi32_ps(ydw##i##0);                      /* 00 01 02 10 11 12 20 21 */ \
                     const auto yf##i##1 = _mm256_castps128_ps256(_mm_cvtepi32_ps(xdw##i##1)); /* 22 30 31 32 ?? ?? ?? ?? */ \
                     const auto yf##i##2 = _mm256_blend_ps(yf##i##0, yf##i##1, 0b00001111);    /* 22 ?? ?? ?? ?? ?? 20 21 */ \
@@ -310,15 +312,17 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
             #if ROTATE_DELTA
                 const auto j_ = (c + 2) & 3;
                 #if LOAD_ROTATE_DELTA_INTRIN
-                    const auto xdw0 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c + j - 1)) * kNChannel]);
-                    const auto xdw1 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c + j - 1)) * kNChannel]);
-                    const auto xdw2 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c + j - 1)) * kNChannel]);
-                    const auto xdw3 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c + j - 1)) * kNChannel]);
-                    const auto xf0 = _mm_cvtepi32_ps(xdw0);
-                    const auto xf1 = _mm_cvtepi32_ps(xdw1);
-                    const auto xf2 = _mm_cvtepi32_ps(xdw2);
-                    const auto xf3 = _mm_cvtepi32_ps(xdw3);
+                    //const auto xdw0 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c + j - 1)) * kNChannel]);
+                    //const auto xdw1 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c + j - 1)) * kNChannel]);
+                    //const auto xdw2 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c + j - 1)) * kNChannel]);
+                    //const auto xdw3 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c + j - 1)) * kNChannel]);
+                    //const auto xf0 = _mm_cvtepi32_ps(xdw0);
+                    //const auto xf1 = _mm_cvtepi32_ps(xdw1);
+                    //const auto xf2 = _mm_cvtepi32_ps(xdw2);
+                    //const auto xf3 = _mm_cvtepi32_ps(xdw3);
                     #define MAKE_SW(i) \
+                        const auto xdw##i = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + i - 1) * nCol + (c + j - 1)) * kNChannel]); \
+                        const auto xf0##i = _mm_cvtepi32_ps(xdw0); \
                         const auto xsw##i##0 = _mm_permute_ps(xf##i, _MM_SHUFFLE(0, 2, 1, 0)); /* 00 01 02 00 */ \
                         const auto xsw##i##1 = _mm_permute_ps(xf##i, _MM_SHUFFLE(1, 0, 2, 1)); /* 01 02 00 01 */ \
                         const auto xsw##i##2 = _mm_permute_ps(xf##i, _MM_SHUFFLE(2, 1, 0, 2)); /* 02 00 01 02 */ \
