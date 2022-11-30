@@ -111,12 +111,21 @@ struct CoeffTableSwizzled
                 for (auto j = 0; j < 4; ++j)
                     for (auto ic = 0; ic < kRatio; ++ic)
                         for (auto ch = 0; ch < kNChannel; ++ch)
-                            m_Data[ir][i][j][ic * kNChannel + ch] = kCoeffs[ir][ic][i][j];
+                            if (j == 3)
+                                m_Data[ir].C3[i][ic * kNChannel + ch] = kCoeffs[ir][ic][i][j];
+                            else
+                                m_Data[ir].C012[i][j][ic * kNChannel + ch] = kCoeffs[ir][ic][i][j];
     }
 
     constexpr decltype(auto) operator[](int ir) const { return (m_Data[ir]); }
 
-    alignas(64) float m_Data[kRatio][4][4][16]{};
+    struct PerSubRow
+    {
+        float C3[4][16];
+        float C012[4][3][16];
+    };
+
+    alignas(64) PerSubRow m_Data[kRatio]{};
 };
 
 static constexpr CoeffTableSwizzled kCoeffsSwizzled;
@@ -273,25 +282,26 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                 const auto& coeffs = kCoeffsSwizzled.m_Data[ir];
 
                 #define PERFORM(i, j) \
-                    yf0 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][0]), _mm256_load_ps(&in012[i][j][0]), yf0); \
-                    yf1 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][8]), _mm256_load_ps(&in012[i][j][8]), yf1);
+                    yf0 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs.C012[i][j][0]), _mm256_load_ps(&in012[i][j][0]), yf0); \
+                    yf1 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs.C012[i][j][8]), _mm256_load_ps(&in012[i][j][8]), yf1);
 
                 #define PERFORM3(i) \
-                    yf0 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][3][0]), yin##i##30, yf0); \
-                    yf1 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][3][8]), yin##i##31, yf1);
+                    yf0 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs.C3[i][0]), yin##i##30, yf0); \
+                    yf1 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs.C3[i][8]), yin##i##31, yf1);
 
                 #define PERFORMR(i) \
                     PERFORM(i, 0); \
                     PERFORM(i, 1); \
                     PERFORM(i, 2); \
-                    PERFORM3(i);
 
-                auto yf0 = _mm256_mul_ps(_mm256_load_ps(&coeffs[0][0][0]), _mm256_load_ps(&in012[0][0][0]));
-                auto yf1 = _mm256_mul_ps(_mm256_load_ps(&coeffs[0][0][8]), _mm256_load_ps(&in012[0][0][8]));
+                auto yf0 = _mm256_mul_ps(_mm256_load_ps(&coeffs.C3[0][0]), yin030);
+                auto yf1 = _mm256_mul_ps(_mm256_load_ps(&coeffs.C3[0][8]), yin031);
 
-                PERFORM(0, 1);
-                PERFORM(0, 2);
-                PERFORM3(0);
+                PERFORM3(1);
+                PERFORM3(2);
+                PERFORM3(3);
+
+                PERFORMR(0);
                 PERFORMR(1);
                 PERFORMR(2);
                 PERFORMR(3);
