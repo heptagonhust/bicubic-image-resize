@@ -171,9 +171,13 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
     {
         PROF_SCOPED_COND_CAPTURE(r == 123);
         //PROF_SCOPED_MARKER("SourceRow");
-        alignas(32) float in012[4][4][16];
+
+        __m256 yin030, yin031, yin130, yin131, yin230, yin231, yin330, yin331;
+
+        alignas(32) float in012[4][3][16];
         {
             PROF_SCOPED_MARKER("LoadInput");
+
         #if USE_ASM_LOAD
             #define LoadYmm(y, p) asm("vpmovzxbd %1, %0" : "=x"(y) : "m"(*(unsigned char(*)[8])(p)))
             #define LoadXmm(x, p) asm("vpmovzxbd %1, %0" : "=x"(x) : "m"(*(unsigned char(*)[4])(p)))
@@ -206,16 +210,14 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                 _mm256_store_ps(&in012[i][1][8], ysw##i##11); \
                 _mm256_store_ps(&in012[i][2][0], ysw##i##20); \
                 _mm256_store_ps(&in012[i][2][8], ysw##i##21); \
-                _mm256_store_ps(&in012[i][3][0], ysw##i##30); \
-                _mm256_store_ps(&in012[i][3][8], ysw##i##31);
+                yin##i##30 = ysw##i##30; \
+                yin##i##31 = ysw##i##31;
 
             MAKE_SW(0);
             MAKE_SW(1);
             MAKE_SW(2);
             MAKE_SW(3);
 
-            #undef GET_SW0
-            #undef GET_SW1
             #undef MAKE_SW
         }
 
@@ -231,30 +233,27 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                 LoadXmm(xdw1, &src.data[((r - 0) * nCol + (c + j - 1)) * kNChannel]);
                 LoadXmm(xdw2, &src.data[((r + 1) * nCol + (c + j - 1)) * kNChannel]);
                 LoadXmm(xdw3, &src.data[((r + 2) * nCol + (c + j - 1)) * kNChannel]);
-                const auto xf0 = _mm_cvtepi32_ps(xdw0);
-                const auto xf1 = _mm_cvtepi32_ps(xdw1);
-                const auto xf2 = _mm_cvtepi32_ps(xdw2);
-                const auto xf3 = _mm_cvtepi32_ps(xdw3);
+                const auto yf0 = _mm256_castps128_ps256(_mm_cvtepi32_ps(xdw0));
+                const auto yf1 = _mm256_castps128_ps256(_mm_cvtepi32_ps(xdw1));
+                const auto yf2 = _mm256_castps128_ps256(_mm_cvtepi32_ps(xdw2));
+                const auto yf3 = _mm256_castps128_ps256(_mm_cvtepi32_ps(xdw3));
                 #define MAKE_SW(i) \
-                    const auto xsw##i##0 = _mm_permute_ps(xf##i, _MM_SHUFFLE(0, 2, 1, 0)); /* 00 01 02 00 */ \
-                    const auto xsw##i##1 = _mm_permute_ps(xf##i, _MM_SHUFFLE(1, 0, 2, 1)); /* 01 02 00 01 */ \
-                    const auto xsw##i##2 = _mm_permute_ps(xf##i, _MM_SHUFFLE(2, 1, 0, 2)); /* 02 00 01 02 */ \
+                    const auto ysw##i##0 = GET_SW0(yf##i, 2, 1, 0); \
+                    const auto ysw##i##1 = GET_SW1(yf##i, 2, 1, 0); \
                     const auto ycp##i##00 = _mm256_load_ps(&in012[i][1][0]); \
                     const auto ycp##i##01 = _mm256_load_ps(&in012[i][1][8]); \
                     const auto ycp##i##10 = _mm256_load_ps(&in012[i][2][0]); \
                     const auto ycp##i##11 = _mm256_load_ps(&in012[i][2][8]); \
-                    const auto ycp##i##20 = _mm256_load_ps(&in012[i][3][0]); \
-                    const auto ycp##i##21 = _mm256_load_ps(&in012[i][3][8]); \
+                    const auto ycp##i##20 = yin##i##30; \
+                    const auto ycp##i##21 = yin##i##31; \
                     _mm256_store_ps(&in012[i][0][0], ycp##i##00); \
                     _mm256_store_ps(&in012[i][0][8], ycp##i##01); \
                     _mm256_store_ps(&in012[i][1][0], ycp##i##10); \
                     _mm256_store_ps(&in012[i][1][8], ycp##i##11); \
                     _mm256_store_ps(&in012[i][2][0], ycp##i##20); \
                     _mm256_store_ps(&in012[i][2][8], ycp##i##21); \
-                    _mm_store_ps(&in012[i][3][ 0], xsw##i##0); \
-                    _mm_store_ps(&in012[i][3][ 4], xsw##i##1); \
-                    _mm_store_ps(&in012[i][3][ 8], xsw##i##2); \
-                    _mm_store_ps(&in012[i][3][12], xsw##i##0);
+                    yin##i##30 = ysw##i##0; \
+                    yin##i##31 = ysw##i##1;
 
                 MAKE_SW(0);
                 MAKE_SW(1);
@@ -277,18 +276,22 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
                     yf0 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][0]), _mm256_load_ps(&in012[i][j][0]), yf0); \
                     yf1 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][8]), _mm256_load_ps(&in012[i][j][8]), yf1);
 
+                #define PERFORM3(i) \
+                    yf0 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][3][0]), yin##i##30, yf0); \
+                    yf1 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][3][8]), yin##i##31, yf1);
+
                 #define PERFORMR(i) \
                     PERFORM(i, 0); \
                     PERFORM(i, 1); \
                     PERFORM(i, 2); \
-                    PERFORM(i, 3);
+                    PERFORM3(i);
 
                 auto yf0 = _mm256_mul_ps(_mm256_load_ps(&coeffs[0][0][0]), _mm256_load_ps(&in012[0][0][0]));
                 auto yf1 = _mm256_mul_ps(_mm256_load_ps(&coeffs[0][0][8]), _mm256_load_ps(&in012[0][0][8]));
 
                 PERFORM(0, 1);
                 PERFORM(0, 2);
-                PERFORM(0, 3);
+                PERFORM3(0);
                 PERFORMR(1);
                 PERFORMR(2);
                 PERFORMR(3);
