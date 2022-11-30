@@ -16,6 +16,7 @@ int main(int argc, char **argv) {
   float ratio = 5.f;
 
   auto image_after_resize = ResizeImage(image, ratio);
+  printf("============================");
 
   int name_len = src_name.find_last_of('.');
   std::string dst_name = src_name.substr(0, name_len) + std::string("_5x.jpg");

@@ -1,0 +1,3 @@
+D:/github/bicubic-image-resize - 副本/cmake-build-debug/CMakeFiles/resize.dir
+D:/github/bicubic-image-resize - 副本/cmake-build-debug/CMakeFiles/edit_cache.dir
+D:/github/bicubic-image-resize - 副本/cmake-build-debug/CMakeFiles/rebuild_cache.dir
