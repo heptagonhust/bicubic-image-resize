@@ -235,10 +235,11 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
             {
                 constexpr auto j = 3;
 
-                const auto xdw0 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (c + j - 1)) * kNChannel]);
-                const auto xdw1 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (c + j - 1)) * kNChannel]);
-                const auto xdw2 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (c + j - 1)) * kNChannel]);
-                const auto xdw3 = _mm_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (c + j - 1)) * kNChannel]);
+                __m128 xdw0, xdw1, xdw2, xdw3;
+                LoadXmm(xdw0, &src.data[((r - 1) * nCol + (c + j - 1)) * kNChannel]);
+                LoadXmm(xdw1, &src.data[((r - 0) * nCol + (c + j - 1)) * kNChannel]);
+                LoadXmm(xdw2, &src.data[((r + 1) * nCol + (c + j - 1)) * kNChannel]);
+                LoadXmm(xdw3, &src.data[((r + 2) * nCol + (c + j - 1)) * kNChannel]);
                 const auto xf0 = _mm_cvtepi32_ps(xdw0);
                 const auto xf1 = _mm_cvtepi32_ps(xdw1);
                 const auto xf2 = _mm_cvtepi32_ps(xdw2);
