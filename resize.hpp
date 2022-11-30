@@ -235,7 +235,7 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
             {
                 constexpr auto j = 3;
 
-                __m128 xdw0, xdw1, xdw2, xdw3;
+                __m128i xdw0, xdw1, xdw2, xdw3;
                 LoadXmm(xdw0, &src.data[((r - 1) * nCol + (c + j - 1)) * kNChannel]);
                 LoadXmm(xdw1, &src.data[((r - 0) * nCol + (c + j - 1)) * kNChannel]);
                 LoadXmm(xdw2, &src.data[((r + 1) * nCol + (c + j - 1)) * kNChannel]);
