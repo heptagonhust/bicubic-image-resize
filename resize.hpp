@@ -162,6 +162,8 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
 
 #define SIMPLIFY_START 0
 
+#define USE_ASM_LOAD 1
+
     PROF_SCOPED_MARKER("WorkLoop");
 
     #pragma omp parallel for
@@ -172,6 +174,13 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
         alignas(32) float in012[4][4][16];
         {
             PROF_SCOPED_MARKER("LoadInput");
+        #if USE_ASM_LOAD
+            #define LoadYmm(y, p) asm("vpmovzxbd %1, %0" : "=x"(y), "m"(*(unsigned char(*)[8])(p)))
+            #define LoadXmm(x, p) asm("vpmovzxbd %1, %0" : "=x"(x), "m"(*(unsigned char(*)[4])(p)))
+        #else
+            #define LoadYmm(y, p) (y = _mm256_cvtepu8_epi32(*(const __m128i*)(p)));
+            #define LoadXmm(x, p) (x = _mm_cvtepu8_epi32(   *(const __m128i*)(p)))
+        #endif
 
             //const auto ydw00 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 0]);
             //const auto xdw01 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 8]);
@@ -186,8 +195,9 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
             #define GET_SW1(y, _2, _1, _0) _mm256_permutevar8x32_ps(y, _mm256_set_epi32(_0, _2, _1, _0, _2, _1, _0, _2))
 
             #define MAKE_SW(i) \
-                const auto ydw##i##0 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + i - 1) * nCol + (1 - 1)) * kNChannel + 0]); \
-                const auto xdw##i##1 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r + i - 1) * nCol + (1 - 1)) * kNChannel + 8]); \
+                __m256i ydw##i##0; __m128i xdw##i##1; \
+                LoadYmm(ydw##i##0, &src.data[((r + i - 1) * nCol + (1 - 1)) * kNChannel + 0]); \
+                LoadXmm(xdw##i##1, &src.data[((r + i - 1) * nCol + (1 - 1)) * kNChannel + 8]); \
                 const auto yf##i##0 = _mm256_cvtepi32_ps(ydw##i##0);                      /* 00 01 02 10 11 12 20 21 */ \
                 const auto yf##i##1 = _mm256_castps128_ps256(_mm_cvtepi32_ps(xdw##i##1)); /* 22 30 31 32 ?? ?? ?? ?? */ \
                 const auto yf##i##2 = _mm256_blend_ps(yf##i##0, yf##i##1, 0b00001111);    /* 22 ?? ?? ?? ?? ?? 20 21 */ \
