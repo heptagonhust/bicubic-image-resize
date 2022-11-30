@@ -182,15 +182,6 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
             #define LoadXmm(x, p) (x = _mm_cvtepu8_epi32(   *(const __m128i*)(p)))
         #endif
 
-            //const auto ydw00 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 0]);
-            //const auto xdw01 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r - 1) * nCol + (1 - 1)) * kNChannel + 8]);
-            //const auto ydw10 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r - 0) * nCol + (1 - 1)) * kNChannel + 0]);
-            //const auto xdw11 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r - 0) * nCol + (1 - 1)) * kNChannel + 8]);
-            //const auto ydw20 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 1) * nCol + (1 - 1)) * kNChannel + 0]);
-            //const auto xdw21 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r + 1) * nCol + (1 - 1)) * kNChannel + 8]);
-            //const auto ydw30 = _mm256_cvtepu8_epi32(*(const __m128i*)&src.data[((r + 2) * nCol + (1 - 1)) * kNChannel + 0]);
-            //const auto xdw31 = _mm_cvtepu8_epi32(   *(const __m128i*)&src.data[((r + 2) * nCol + (1 - 1)) * kNChannel + 8]);
-
             #define GET_SW0(y, _2, _1, _0) _mm256_permutevar8x32_ps(y, _mm256_set_epi32(_1, _0, _2, _1, _0, _2, _1, _0))
             #define GET_SW1(y, _2, _1, _0) _mm256_permutevar8x32_ps(y, _mm256_set_epi32(_0, _2, _1, _0, _2, _1, _0, _2))
 
@@ -274,30 +265,36 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
             }
 
             //PROF_SCOPED_MARKER("YieldTile");
-
-        //#if SIMPLIFY_START
-        //    for (auto ir = 0; ir < kRatio; ++ir)
-        //#else
-        //    for (auto ir = r == 1 ? 1 : 0; ir < kRatio; ++ir)
-        //#endif
-        //        _mm_prefetch(&pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel], _MM_HINT_NTA);
         #if SIMPLIFY_START
             for (auto ir = 0; ir < kRatio; ++ir)
         #else
             for (auto ir = r == 1 ? 1 : 0; ir < kRatio; ++ir)
         #endif
             {
-                //_mm_prefetch(&pRes[((r * kRatio + ir) * nResCol + c * kRatio) * kNChannel], _MM_HINT_NTA);
                 const auto& coeffs = kCoeffsSwizzled.m_Data[ir];
-                auto yf0 = _mm256_setzero_ps();
-                auto yf1 = _mm256_setzero_ps();
 
-                for (auto i = 0; i < 4; ++i)
-                    for (auto j = 0; j < 4; ++j)
-                    {
-                        yf0 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][0]), _mm256_load_ps(&in012[i][j][0]), yf0);
-                        yf1 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][8]), _mm256_load_ps(&in012[i][j][8]), yf1);
-                    }
+                #define PERFORM(i, j) \
+                    yf0 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][0]), _mm256_load_ps(&in012[i][j][0]), yf0); \
+                    yf1 = _mm256_fmadd_ps(_mm256_load_ps(&coeffs[i][j][8]), _mm256_load_ps(&in012[i][j][8]), yf1);
+
+                #define PERFORMR(i) \
+                    PERFORM(i, 0); \
+                    PERFORM(i, 1); \
+                    PERFORM(i, 2); \
+                    PERFORM(i, 3);
+
+                auto yf0 = _mm256_mul_ps(_mm256_load_ps(&coeffs[0][0][0]), _mm256_load_ps(&in012[0][0][0]));
+                auto yf1 = _mm256_mul_ps(_mm256_load_ps(&coeffs[0][0][8]), _mm256_load_ps(&in012[0][0][8]));
+
+                PERFORM(0, 1);
+                PERFORM(0, 2);
+                PERFORM(0, 3);
+                PERFORMR(1);
+                PERFORMR(2);
+                PERFORMR(3);
+
+                #undef PERFORM
+                #undef PERFORMR
 
                 const auto ydw0 = _mm256_cvttps_epi32(yf0);
                 const auto ydw1 = _mm256_cvttps_epi32(yf1);
