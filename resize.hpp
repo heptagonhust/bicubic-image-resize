@@ -175,8 +175,8 @@ RGBImage ResizeImage(RGBImage src, float ratio) {
         {
             PROF_SCOPED_MARKER("LoadInput");
         #if USE_ASM_LOAD
-            #define LoadYmm(y, p) asm("vpmovzxbd %1, %0" : "=x"(y), "m"(*(unsigned char(*)[8])(p)))
-            #define LoadXmm(x, p) asm("vpmovzxbd %1, %0" : "=x"(x), "m"(*(unsigned char(*)[4])(p)))
+            #define LoadYmm(y, p) asm("vpmovzxbd %1, %0" : "=x"(y) : "m"(*(unsigned char(*)[8])(p)))
+            #define LoadXmm(x, p) asm("vpmovzxbd %1, %0" : "=x"(x) : "m"(*(unsigned char(*)[4])(p)))
         #else
             #define LoadYmm(y, p) (y = _mm256_cvtepu8_epi32(*(const __m128i*)(p)));
             #define LoadXmm(x, p) (x = _mm_cvtepu8_epi32(   *(const __m128i*)(p)))
